@@ -94,7 +94,6 @@ def detect_language(text: str) -> Dict[str, Any]:
 
 # -----------------------------------------------------------------------------
 # 2. Translation Cache
-# -----------------------------------------------------------------------------
 def _load_translation_cache() -> Dict[str, str]:
     if os.path.exists(TRANSLATION_CACHE_FILE):
         try:
@@ -151,11 +150,11 @@ def _translate_deep_translator(text: str, source_lang: str) -> Optional[str]:
         return None
 
 
-def translate_text(text: str, source_lang_code: str = "auto") -> Dict[str, Any]:
+def translate_text(text: str, source_lang_code: str = "auto", use_cache: bool = True) -> Dict[str, Any]:
     """
     Translates non-English text to English.
     Tries:
-    1. Local persistent translation cache
+    1. Local persistent translation cache (if use_cache is True)
     2. Google Cloud Translation API (if GOOGLE_TRANSLATE_API_KEY in .env / os.environ)
     3. deep-translator library
     4. Safe offline fallback (preserves original text)
@@ -172,7 +171,7 @@ def translate_text(text: str, source_lang_code: str = "auto") -> Dict[str, Any]:
     # Check cache
     cache = _load_translation_cache()
     cache_key = f"{source_lang_code}::{text.strip()[:300]}"
-    if cache_key in cache:
+    if use_cache and cache_key in cache:
         return {
             "original_text": text,
             "translated_text": cache[cache_key],
@@ -300,3 +299,8 @@ def compare_multilingual_documents(
         "used_translation": False,
     }
     return native_result
+
+
+# Aliases for convenience
+detect_language_smart = detect_language
+translate_text_smart = translate_text

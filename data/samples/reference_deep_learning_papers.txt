@@ -1,0 +1,5 @@
+Federated Learning is a distributed learning paradigm with two key challenges: communication bottleneck and data heterogeneity across edge clients. In this paradigm, edge devices train localized models using proprietary datasets and transmit parameter gradients to a central coordinating aggregation server.
+
+The dominant sequence transduction models are based on complex recurrent or convolutional neural networks that include an encoder and a decoder. We propose the Transformer, a model architecture eschewing recurrence and instead relying entirely on an attention mechanism to draw global dependencies between input and output. The Transformer allows for significantly more parallelization and can reach a new state of the art in translation quality after being trained for as little as twelve hours on eight P100 GPUs.
+
+Machine learning algorithms discover intricate statistical structures within high-dimensional training distributions by updating weight matrices through backward gradient propagation. This approach provides significant empirical advancements across natural language processing and computer vision applications.

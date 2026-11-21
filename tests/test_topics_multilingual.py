@@ -77,7 +77,7 @@ class TestMultilingual(unittest.TestCase):
         mock_post.return_value = mock_resp
 
         with patch.dict("os.environ", {"GOOGLE_TRANSLATE_API_KEY": "test-key-xyz"}):
-            res = translate_text("मशीन लर्निंग ही कृत्रिम बुद्धिमत्तेची शाखा आहे.", "mr")
+            res = translate_text("मशीन लर्निंग ही कृत्रिम बुद्धिमत्तेची शाखा आहे.", "mr", use_cache=False)
             self.assertEqual(res["translated_text"], "Machine learning is a subfield of AI.")
             self.assertEqual(res["provider"], "Google Cloud Translation API")
 

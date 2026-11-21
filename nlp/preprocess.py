@@ -189,3 +189,7 @@ def compute_combined_originality_score(
         "combined_similarity_pct": similarity_pct,
         "originality_score": originality_pct,
     }
+
+
+# Convenient alias
+compute_composite_originality_score = compute_combined_originality_score

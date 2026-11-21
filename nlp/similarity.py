@@ -437,3 +437,109 @@ def compare_documents(model, text_a, text_b, name_a, name_b,
     return {"kind": "comparison", "name_a": name_a, "name_b": name_b, "sentences": rows,
             "matches": matches, "best_scores": [round(float(s) * 100, 2) for s in best_scores],
             "stats": stats}
+
+
+def scan_against_reference_corpus(model, text: str, document_name: str = "Uploaded Document",
+                                  reference_dir: Optional[str] = None,
+                                  semantic_threshold: float = 0.70, near_threshold: float = 0.90,
+                                  progress=None) -> Dict[str, Any]:
+    """
+    Compare document text against local academic reference documents (e.g. data/samples/)
+    completely offline. Returns a result dict fully compatible with run_scan.
+    """
+    if progress:
+        progress(0.1, "Reading and splitting sentences...")
+    sentences = extract_sentences(text)
+    if not sentences:
+        raise ValueError(f"No scannable sentences found (need at least {MIN_WORDS} words per sentence).")
+
+    if progress:
+        progress(0.25, "Encoding document sentences...")
+    user_embeddings = encode_sentences(model, sentences)
+
+    if reference_dir is None:
+        reference_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "samples")
+
+    ref_files = []
+    if os.path.isdir(reference_dir):
+        for fname in os.listdir(reference_dir):
+            if fname.endswith(".txt"):
+                ref_files.append((fname, os.path.join(reference_dir, fname)))
+
+    all_matches = []
+    sources = []
+    total_refs = len(ref_files)
+
+    for idx, (title, fpath) in enumerate(ref_files):
+        if progress and total_refs > 0:
+            progress(0.3 + 0.6 * (idx / total_refs), f"Comparing against {title}...")
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            ref_sentences = extract_sentences(content, min_words=MIN_WORDS)
+            if not ref_sentences:
+                continue
+            matches = match_against_source(model, sentences, user_embeddings, ref_sentences,
+                                           title, f"file:///{fpath.replace(os.sep, '/')}",
+                                           semantic_threshold, near_threshold)
+            counted = [m for m in matches if m["type"] in COUNTED_TYPES]
+            sources.append({
+                "title": title.replace("_", " ").replace(".txt", "").title(),
+                "url": fpath,
+                "verified": True,
+                "downloaded": True,
+                "note": "",
+                "matches": len(counted),
+                "compared_sentences": len(ref_sentences),
+                "kind": "Reference Document",
+                "pdf_url": "",
+                "found_by": "Reference Corpus"
+            })
+            all_matches.extend(matches)
+        except Exception:
+            continue
+
+    if progress:
+        progress(0.95, "Finalizing sentence matches...")
+    finalize_semantic_matches(all_matches)
+    counted_per_source = Counter(m["url"] for m in all_matches if m["type"] in COUNTED_TYPES)
+    for s in sources:
+        s["matches"] = counted_per_source[s["url"]]
+
+    sentence_rows, stats = summarize_matches(sentences, all_matches)
+    with_matches = len([s for s in sources if s["matches"] > 0])
+    stats.update(verified_sources=len(sources), sources_with_matches=with_matches, unverified_sources=0)
+
+    status = "matches" if stats["overall_pct"] > 0 else "no_matches"
+    from datetime import datetime
+    scanned_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    pipeline = {
+        "queries_planned": len(ref_files), "queries_ok": len(ref_files),
+        "results_retrieved": len(ref_files), "pages_attempted": len(ref_files),
+        "pages_downloaded": len(ref_files), "pages_compared": len(sources),
+        "sources_with_matches": with_matches, "engine": "Academic Reference Library",
+        "queries": [], "search_errors": []
+    }
+
+    if progress:
+        progress(1.0, "Complete")
+
+    return {
+        "kind": "web_scan",
+        "status": status,
+        "incomplete_reason": "",
+        "document_name": document_name,
+        "scanned_at": scanned_at,
+        "sentences": sentence_rows,
+        "matches": all_matches,
+        "sources": sources,
+        "stats": stats,
+        "pipeline": pipeline,
+        "warnings": [],
+        "settings": {
+            "provider": "reference_library",
+            "semantic_threshold": semantic_threshold,
+            "near_threshold": near_threshold
+        }
+    }
