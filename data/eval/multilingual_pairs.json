@@ -1,0 +1,13 @@
+[
+  {"text_a": "मशीन लर्निंग ही कृत्रिम बुद्धिमत्तेची एक शाखा आहे जी संगणकाला अनुभवातून शिकण्याची क्षमता देते.", "text_b": "Machine learning is a subfield of artificial intelligence that allows computers to learn from experience.", "label": "copied", "type": "marathi_to_en_crosslingual"},
+  {"text_a": "डीप लर्निंग अल्गोरिदम मानवी मेंदूच्या न्यूरॉन्सप्रमाणे काम करतात.", "text_b": "Deep learning algorithms operate similar to neurons in the human brain.", "label": "copied", "type": "marathi_to_en_crosslingual"},
+  {"text_a": "डेटा सायन्समध्ये मोठ्या प्रमाणावर डेटाचे विश्लेषण करून महत्त्वाचे निष्कर्ष काढले जातात.", "text_b": "Data science analyzes large datasets to extract meaningful conclusions and insights.", "label": "copied", "type": "marathi_to_en_crosslingual"},
+  {"text_a": "कृत्रिम बुद्धिमत्ता भविष्यकाळात आरोग्य आणि शिक्षण क्षेत्रात क्रांती घडवून आणेल.", "text_b": "Artificial intelligence will revolutionize healthcare and education in the future.", "label": "copied", "type": "marathi_to_en_crosslingual"},
+  {"text_a": "कंप्यूटर विजन कंप्यूटर को छवियों और वीडियो से जानकारी समझने में मदद करता है।", "text_b": "Computer vision enables computers to understand information from images and videos.", "label": "copied", "type": "hindi_to_en_crosslingual"},
+  {"text_a": "प्राकृतिक भाषा प्रसंस्करण मशीनों को मानव भाषा को संसाधित और समझने में सक्षम बनाता है।", "text_b": "Natural language processing enables machines to process and comprehend human language.", "label": "copied", "type": "hindi_to_en_crosslingual"},
+
+  {"text_a": "सौर ऊर्जा ही सूर्यप्रकाशापासून मिळणारी नैसर्गिक ऊर्जा आहे जी पर्यावरणास पूरक ठरते.", "text_b": "The solar system consists of the Sun and eight planets orbiting around it.", "label": "not_copied", "type": "marathi_unrelated"},
+  {"text_a": "पुणे हे महाराष्ट्राची सांस्कृतिक राजधानी म्हणून ओळखले जाते.", "text_b": "Relational databases use primary keys and foreign keys to enforce integrity.", "label": "not_copied", "type": "marathi_unrelated"},
+  {"text_a": "भारत एक कृषि प्रधान देश है जहाँ विभिन्न प्रकार की फसलें उगाई जाती हैं।", "text_b": "Convolutional networks are primarily employed in computer vision architectures.", "label": "not_copied", "type": "hindi_unrelated"},
+  {"text_a": "योग और ध्यान मानसिक शांति और शारीरिक स्वास्थ्य के लिए बहुत आवश्यक हैं।", "text_b": "Gradient descent minimizes cost functions by calculating partial derivatives.", "label": "not_copied", "type": "hindi_unrelated"}
+]
