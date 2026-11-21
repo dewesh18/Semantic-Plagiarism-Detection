@@ -1,0 +1,24 @@
+[
+  {"text": "The proposed method achieved outstanding results and significantly outperformed existing baselines.", "label": "Positive"},
+  {"text": "Our experimental findings demonstrate impressive accuracy gains and robust performance across all benchmarks.", "label": "Positive"},
+  {"text": "This innovative framework offers valuable advantages for real-time natural language processing.", "label": "Positive"},
+  {"text": "The students did an excellent job presenting novel solutions to complex engineering challenges.", "label": "Positive"},
+  {"text": "We observed highly beneficial outcomes with minimal computational overhead.", "label": "Positive"},
+  {"text": "या संशोधनामुळे आरोग्य क्षेत्रात अत्यंत उत्कृष्ट आणि फायदेशीर बदल घडून आले आहेत.", "label": "Positive"},
+  {"text": "हे मॉडेल मशीन लर्निंग क्षेत्रात खूप प्रभावी आणि यशस्वी ठरले आहे.", "label": "Positive"},
+
+  {"text": "The proposed algorithm suffers from severe degradation when trained on noisy or biased datasets.", "label": "Negative"},
+  {"text": "Unfortunately, the evaluation reveals critical flaws and unacceptable latency in high-throughput environments.", "label": "Negative"},
+  {"text": "The model failed completely to converge, resulting in poor generalization and high error rates.", "label": "Negative"},
+  {"text": "This approach has significant drawbacks and introduces dangerous vulnerabilities into the system.", "label": "Negative"},
+  {"text": "The experimental validation is weak and marred by numerous methodological defects.", "label": "Negative"},
+  {"text": "प्रणालीमध्ये वारंवार होणाऱ्या चुकांमुळे मोठा तोटा आणि नुकसान सहन करावे लागले.", "label": "Negative"},
+  {"text": "या प्रयोगाचे निकाल अत्यंत वाईट आणि निराशाजनक आले आहेत.", "label": "Negative"},
+
+  {"text": "The dataset contains ten thousand medical abstracts collected between 2018 and 2022.", "label": "Neutral"},
+  {"text": "Table 2 summarizes the hyperparameter values configured during the training phase.", "label": "Neutral"},
+  {"text": "We utilized a standard random seed of 42 to ensure deterministic initialization.", "label": "Neutral"},
+  {"text": "All computations were executed on an Ubuntu Linux server equipped with 32 gigabytes of RAM.", "label": "Neutral"},
+  {"text": "The architecture comprises six transformer encoder layers followed by a linear projection head.", "label": "Neutral"},
+  {"text": "हा अहवाल दरवर्षी मार्च महिन्यात प्रकाशित केला जातो आणि संकेतस्थळावर उपलब्ध असतो.", "label": "Neutral"}
+]

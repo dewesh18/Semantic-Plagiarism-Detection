@@ -1,0 +1,111 @@
+{
+  "evaluation_summary": "PlagiarismAI Model & Feature Evaluation Benchmark",
+  "dataset_statistics": {
+    "plagiarism_pairs": 31,
+    "sentiment_sentences": 20,
+    "includes_paraphrase": true,
+    "includes_multilingual_hindi_marathi": true
+  },
+  "plagiarism_detection_benchmark": {
+    "jaccard": {
+      "method_name": "Jaccard Word Similarity",
+      "threshold": 0.25,
+      "accuracy": 0.7742,
+      "precision": 1.0,
+      "recall": 0.5882,
+      "f1": 0.7407,
+      "confusion_matrix": {
+        "true_positive": 10,
+        "false_positive": 0,
+        "true_negative": 14,
+        "false_negative": 7
+      },
+      "mean_copied_score": 0.575,
+      "mean_not_copied_score": 0.008
+    },
+    "tfidf_cosine": {
+      "method_name": "TF-IDF Cosine Similarity",
+      "threshold": 0.35,
+      "accuracy": 0.7742,
+      "precision": 1.0,
+      "recall": 0.5882,
+      "f1": 0.7407,
+      "confusion_matrix": {
+        "true_positive": 10,
+        "false_positive": 0,
+        "true_negative": 14,
+        "false_negative": 7
+      },
+      "mean_copied_score": 0.591,
+      "mean_not_copied_score": 0.011
+    },
+    "embedding_cosine": {
+      "method_name": "Sentence Embeddings Cosine",
+      "threshold": 0.65,
+      "accuracy": 0.9032,
+      "precision": 0.9375,
+      "recall": 0.8824,
+      "f1": 0.9091,
+      "confusion_matrix": {
+        "true_positive": 15,
+        "false_positive": 1,
+        "true_negative": 13,
+        "false_negative": 2
+      },
+      "mean_copied_score": 0.875,
+      "mean_not_copied_score": 0.187
+    }
+  },
+  "sentiment_benchmark": {
+    "total_evaluated": 20,
+    "overall_accuracy": 0.8,
+    "per_class": {
+      "Positive": {
+        "true_count": 7,
+        "pred_count": 7,
+        "correct": 6,
+        "recall": 0.857
+      },
+      "Neutral": {
+        "true_count": 6,
+        "pred_count": 9,
+        "correct": 6,
+        "recall": 1.0
+      },
+      "Negative": {
+        "true_count": 7,
+        "pred_count": 4,
+        "correct": 4,
+        "recall": 0.571
+      }
+    },
+    "sample_predictions": [
+      {
+        "text": "The proposed method achieved outstanding results and significantly outperformed existing baselines.",
+        "true": "Positive",
+        "pred": "Neutral"
+      },
+      {
+        "text": "Our experimental findings demonstrate impressive accuracy gains and robust performance across all benchmarks.",
+        "true": "Positive",
+        "pred": "Positive"
+      },
+      {
+        "text": "This innovative framework offers valuable advantages for real-time natural language processing.",
+        "true": "Positive",
+        "pred": "Positive"
+      },
+      {
+        "text": "The students did an excellent job presenting novel solutions to complex engineering challenges.",
+        "true": "Positive",
+        "pred": "Positive"
+      },
+      {
+        "text": "We observed highly beneficial outcomes with minimal computational overhead.",
+        "true": "Positive",
+        "pred": "Positive"
+      }
+    ]
+  },
+  "chart_path": "E:\\nlp_copy\\PlagiarismAI-main\\reports\\figures\\similarity_methods_benchmark.png"
+}
