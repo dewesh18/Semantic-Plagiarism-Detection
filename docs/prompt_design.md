@@ -1,7 +1,7 @@
 # Prompt Engineering and LLM Design Notes (CO4)
 
 ## Overview
-PlagiarismAI integrates the **Google Gemini API** (`gemini-1.5-flash` / `gemini-2.0-flash-exp`) to help students understand why specific flagged passages trigger similarity alerts and guide them in ethical academic synthesis, authentic rewriting, and proper attribution.
+PlagiarismAI integrates the official **Google Gen AI SDK** (`google-genai`) using `gemini-2.5-flash` (configurable via `GEMINI_MODEL`) to help students understand why specific flagged passages trigger similarity alerts and guide them in ethical academic synthesis, authentic rewriting, and proper attribution.
 
 ---
 

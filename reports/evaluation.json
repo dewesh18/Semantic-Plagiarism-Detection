@@ -12,7 +12,8 @@
     "tfidf_threshold": 0.35,
     "monolingual_embedding_threshold": 0.65,
     "crosslingual_embedding_threshold": 0.6,
-    "note": "Thresholds are determined by standard information retrieval heuristics (Jaccard > 0.25 token overlap; TF-IDF cosine > 0.35 vector similarity; embedding cosine > 0.65 for near/semantic paraphrase; cross-lingual cosine > 0.60 for multilingual semantic alignment). Note: small evaluation set is used as demonstration benchmark; thresholds were not hyperparameter-tuned on this set."
+    "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+    "note": "Thresholds are determined by standard information retrieval heuristics (Jaccard > 0.25 token overlap; TF-IDF cosine > 0.35 vector similarity; embedding cosine > 0.65 for near/semantic paraphrase; cross-lingual cosine > 0.60 for multilingual semantic alignment). Note: small evaluation set is used as demonstration benchmark; thresholds were chosen by inspection on a small dataset; results are optimistic."
   },
   "limitations": [
     "Dataset sizes (31 text pairs, 20 sentiment sentences, 10 cross-lingual pairs) are concise to enable rapid interactive testing and grading.",
@@ -24,6 +25,8 @@
     "jaccard": {
       "method_name": "Jaccard Word Similarity",
       "threshold": 0.25,
+      "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+      "pairs_evaluated": 31,
       "accuracy": 0.7742,
       "precision": 1.0,
       "recall": 0.5882,
@@ -40,6 +43,8 @@
     "tfidf_cosine": {
       "method_name": "TF-IDF Cosine Similarity",
       "threshold": 0.35,
+      "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+      "pairs_evaluated": 31,
       "accuracy": 0.7742,
       "precision": 1.0,
       "recall": 0.5882,
@@ -56,6 +61,8 @@
     "embedding_cosine": {
       "method_name": "Sentence Embeddings Cosine",
       "threshold": 0.65,
+      "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+      "pairs_evaluated": 31,
       "accuracy": 1.0,
       "precision": 1.0,
       "recall": 1.0,
@@ -74,7 +81,8 @@
     "direct_embeddings": {
       "method_name": "Direct Multilingual Embeddings (paraphrase-multilingual-MiniLM-L12-v2)",
       "threshold": 0.6,
-      "threshold_rationale": "Principled 0.60 decision boundary separating aligned cross-lingual semantics (mean 0.86) from unrelated topics (mean 0.12)",
+      "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+      "pairs_evaluated": 10,
       "accuracy": 1.0,
       "precision": 1.0,
       "recall": 1.0,
@@ -86,13 +94,87 @@
         "false_negative": 0
       },
       "mean_copied_score": 0.88,
-      "mean_not_copied_score": 0.121
+      "mean_not_copied_score": 0.121,
+      "per_pair_results": [
+        {
+          "pair_id": 1,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.8898,
+          "direct_multilingual_score": 0.8898
+        },
+        {
+          "pair_id": 2,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.8084,
+          "direct_multilingual_score": 0.8084
+        },
+        {
+          "pair_id": 3,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.821,
+          "direct_multilingual_score": 0.821
+        },
+        {
+          "pair_id": 4,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.9314,
+          "direct_multilingual_score": 0.9314
+        },
+        {
+          "pair_id": 5,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.881,
+          "direct_multilingual_score": 0.881
+        },
+        {
+          "pair_id": 6,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.9487,
+          "direct_multilingual_score": 0.9487
+        },
+        {
+          "pair_id": 7,
+          "label": "not_copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.4616,
+          "direct_multilingual_score": 0.4616
+        },
+        {
+          "pair_id": 8,
+          "label": "not_copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.0661,
+          "direct_multilingual_score": 0.0661
+        },
+        {
+          "pair_id": 9,
+          "label": "not_copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.068,
+          "direct_multilingual_score": 0.068
+        },
+        {
+          "pair_id": 10,
+          "label": "not_copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": -0.112,
+          "direct_multilingual_score": -0.112
+        }
+      ]
     },
     "translate_then_compare": {
       "method_name": "Translate-Then-Compare (Cloud/Local Pipeline)",
       "threshold": 0.6,
+      "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+      "pairs_evaluated": 10,
       "providers_used": [
-        "Local Translation Cache"
+        "Offline Text Engine (No API Key)"
       ],
       "accuracy": 1.0,
       "precision": 1.0,
@@ -105,7 +187,79 @@
         "false_negative": 0
       },
       "mean_copied_score": 0.88,
-      "mean_not_copied_score": 0.121
+      "mean_not_copied_score": 0.121,
+      "per_pair_results": [
+        {
+          "pair_id": 1,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.8898,
+          "direct_multilingual_score": 0.8898
+        },
+        {
+          "pair_id": 2,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.8084,
+          "direct_multilingual_score": 0.8084
+        },
+        {
+          "pair_id": 3,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.821,
+          "direct_multilingual_score": 0.821
+        },
+        {
+          "pair_id": 4,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.9314,
+          "direct_multilingual_score": 0.9314
+        },
+        {
+          "pair_id": 5,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.881,
+          "direct_multilingual_score": 0.881
+        },
+        {
+          "pair_id": 6,
+          "label": "copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.9487,
+          "direct_multilingual_score": 0.9487
+        },
+        {
+          "pair_id": 7,
+          "label": "not_copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.4616,
+          "direct_multilingual_score": 0.4616
+        },
+        {
+          "pair_id": 8,
+          "label": "not_copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.0661,
+          "direct_multilingual_score": 0.0661
+        },
+        {
+          "pair_id": 9,
+          "label": "not_copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": 0.068,
+          "direct_multilingual_score": 0.068
+        },
+        {
+          "pair_id": 10,
+          "label": "not_copied",
+          "provider_used": "Offline Text Engine (No API Key)",
+          "translate_then_compare_score": -0.112,
+          "direct_multilingual_score": -0.112
+        }
+      ]
     }
   },
   "sentiment_benchmark": {

@@ -3,7 +3,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit App](https://img.shields.io/badge/Streamlit-1.40+-FF4B4B.svg)](https://streamlit.io)
 [![NLP & LLM Powered](https://img.shields.io/badge/NLP-SentenceTransformers%20%7C%20spaCy%20%7C%20Gemini-green.svg)](#course-outcomes-co-rubric-mapping)
-[![Tests Passing](https://img.shields.io/badge/Unit%20Tests-62%20Passed-brightgreen.svg)](#running-unit-tests)
+[![Tests Passing](https://img.shields.io/badge/Unit%20Tests-63%20Passed-brightgreen.svg)](#running-unit-tests)
 
 **PlagiarismAI** is a comprehensive Natural Language Processing (NLP) and Generative AI application designed to detect text reuse, classify writing tone, extract topical themes and named entities, support cross-lingual analysis (English, Hindi, Marathi), and provide interactive AI-assisted rephrasing and citation guidance for academic writing.
 
@@ -18,7 +18,7 @@ The system is built to satisfy college project demonstration criteria (30 Marks 
 | **CO1: Text Preprocessing & Vectorization** | **7** | `nlp/preprocess.py`<br>`nlp/extract.py` | • Multi-format extraction (PDF, DOCX, TXT)<br>• Text cleaning (URLs, citations, punctuation, whitespace)<br>• Sentence splitting, tokenization, lemmatization (spaCy/WordNet)<br>• Vectorization: TF-IDF & Multilingual Sentence-BERT (`paraphrase-multilingual-MiniLM-L12-v2`)<br>• Weighted composite originality score | **Tab 1: Check**<br>**Tab 4: Project Report** ("How we read your text" before/after preview) |
 | **CO2: Sentiment Analysis & Information Extraction** | **8** | `nlp/analysis.py`<br>`evaluate.py`<br>`data/eval/` | • Document & paragraph sentiment scoring (VADER + Devanagari lexicon)<br>• Information Extraction: Named Entity Recognition (spaCy NER), KeyBERT keywords, regex academic citations<br>• Real labeled evaluation benchmark (Accuracy, Precision, Recall, F1, Confusion Matrix) | **Tab 2: Results** (Tone & Key Details cards)<br>**Tab 4: Project Report** (Benchmark table & chart) |
 | **CO3: Topic Modeling & Multilingual NLP** | **7** | `nlp/topics.py`<br>`nlp/multilingual.py` | • Latent Dirichlet Allocation (scikit-learn LDA) with short-text keyword fallback<br>• Topic overlap score (cosine on topic distributions)<br>• Language detection (English, Hindi, Marathi)<br>• Cloud AI Translation (Google Cloud REST API + offline fallback)<br>• Cross-lingual semantic embedding alignment | **Tab 2: Results** (Theme chips & Language badge)<br>**Tab 4: Project Report** (Multilingual benchmark) |
-| **CO4: Generative AI Assistant & Prompt Engineering** | **8** | `llm/prompts.py`<br>`llm/assistant.py`<br>`docs/prompt_design.md` | • Academic Writing Coach powered by Google Gemini API (`gemini-1.5-flash`)<br>• Prompt engineering: persona specification, few-shot examples, JSON schema enforcement<br>• Safety: prompt-injection isolation delimiters (`<<<PASSAGE>>>`)<br>• Side-by-side rewriting, plain explanation, APA citation, 3 originality tips | **Tab 3: Fix it for me** (Side-by-side rewrites, citations, tips) |
+| **CO4: Generative AI Assistant & Prompt Engineering** | **8** | `llm/prompts.py`<br>`llm/assistant.py`<br>`docs/prompt_design.md` | • Academic Writing Coach powered by Google GenAI SDK (`google-genai`), defaulting to `gemini-2.5-flash` (configurable via `GEMINI_MODEL`)<br>• Prompt engineering: persona specification, few-shot examples, JSON schema enforcement<br>• Safety: prompt-injection isolation delimiters (`<<<PASSAGE>>>`)<br>• Side-by-side rewriting, plain explanation, APA citation, 3 originality tips | **Tab 3: Fix it for me** (Side-by-side rewrites, citations, tips) |
 
 ---
 
@@ -63,7 +63,7 @@ PlagiarismAI/
 ├── docs/                       # Technical documentation
 │   └── prompt_design.md        # Prompt engineering architecture & decisions
 │
-└── tests/                      # Automated unit test suite (62 tests)
+└── tests/                      # Automated unit test suite (63 tests)
     ├── test_preprocess.py      # Tests for text cleaning and vectorization
     ├── test_analysis.py        # Tests for sentiment, NER, keywords, citations
     ├── test_topics_multilingual.py # Tests for LDA, language detection, translation
@@ -95,8 +95,8 @@ Copy `.env.example` to `.env`:
 Copy-Item .env.example .env
 ```
 Add your API keys to `.env` if available:
-- `GEMINI_API_KEY`: For Generative AI writing assistant features. *(The app includes offline academic fallback templates if no key is supplied).*
-- `GOOGLE_TRANSLATE_API_KEY`: For Google Cloud Translation REST calls. *(The app includes local caching and offline translation fallbacks if omitted).*
+- `GEMINI_API_KEY`: For Generative AI writing assistant features via the modern `google-genai` SDK (`gemini-2.5-flash` by default; configurable via `GEMINI_MODEL`). *(The app includes offline academic fallback templates if no key is supplied).*
+- `GOOGLE_TRANSLATE_API_KEY`: For Google Cloud Translation REST calls. *(The app displays 'fallback translator' and uses deep-translator or local fallback if omitted).*
 - `BRAVE_API_KEY` or `TAVILY_API_KEY`: For live internet search. *(The app defaults to the verified offline reference library for zero-failure demonstrations).*
 
 ### 4. Run the Application
@@ -121,7 +121,7 @@ python run.py
 # 2. Run the evaluation benchmark (recomputes evaluation.json and benchmark figure)
 python run.py --evaluate
 
-# 3. Run the full automated unit test suite (62 tests)
+# 3. Run the full automated unit test suite (63 tests)
 python run.py --test
 ```
 
@@ -132,14 +132,16 @@ python run.py --test
 | Step | Time | Tab / Screen | Action to Perform | What to Explain to Examiners | Rubric Covered |
 |:---:|:---:|---|---|---|:---:|
 | **1** | 0:00 - 0:40 | **Tab 1: Check** | Click the **"⚠️ Copied & Paraphrased"** sample button, then click **"Check my document"**. | Explain the multi-stage pipeline: text extraction, cleaning, lemmatization, language identification, and semantic similarity matching against literature. | **CO1** |
-| **2** | 0:40 - 1:20 | **Tab 2: Results** | Review the **Originality Score (30%)** and the 4 plain-language cards: **Copied parts**, **Tone (Neutral academic)**, **Themes (Machine Learning & AI)**, and **Key details (Vaswani et al.)**. | Point out that semantic similarity detects paraphrases without shared exact words. Show how the 4 cards translate complex NLP into actionable insights. | **CO2** & **CO3** |
+| **2** | 0:40 - 1:20 | **Tab 2: Results** | Review the **Originality Score (14.3%)** (85.7% similarity) and the 4 plain-language cards: **Copied parts** (6 of 7 sentences flagged), **Tone (Positive, 83% confidence)**, **Themes (Artificial Intelligence & Machine Learning)**, and **Key details (Vaswani et al.)**. | Point out that semantic similarity detects paraphrases without shared exact words. Show how the 4 cards translate complex NLP into actionable insights. | **CO2** & **CO3** |
 | **3** | 1:20 - 1:50 | **Tab 2 ➔ Tab 3** | Under "Copied parts", click **"Fix Passage 1"**, then switch to **Tab 3: Fix it for me** and click **"Fix this passage with AI Writing Coach"**. | Show the side-by-side comparison: flagged sentence vs academic rewrite, the plain explanation of why it was flagged, the ready-to-use APA citation, and the 3 tips. | **CO4** |
-| **4** | 1:50 - 2:30 | **Tab 1 ➔ Tab 2** | Return to Tab 1, click **"🌐 Hindi Document"**, and click **"Check my document"**. | Demonstrate multilingual NLP: automatic Devanagari detection, translation to English, and cross-lingual semantic matching against the reference corpus. | **CO3** |
-| **5** | 2:30 - 3:00 | **Tab 4: Project Report** | Switch to **Tab 4: Project Report**. Show the **"How we read your text"** before/after preview, the **Evaluation Benchmark Table**, the **Benchmark Chart**, and download the official **PDF report**. | Highlight honest scientific methodology: 62 unit tests passing, evaluation across 31 text pairs, 20 sentiment sentences, and 10 cross-lingual pairs. | **All (CO1-CO4)** |
+| **4** | 1:50 - 2:30 | **Tab 1 ➔ Tab 2** | Return to Tab 1, click **"🌐 Hindi Document"**, and click **"Check my document"**. | Demonstrate multilingual NLP: automatic Devanagari detection (Hindi, 99%), translation to English (Google Cloud or fallback translator), and cross-lingual semantic matching (70.4% topical overlap, 100% originality). | **CO3** |
+| **5** | 2:30 - 3:00 | **Tab 4: Project Report** | Switch to **Tab 4: Project Report**. Show the **"How we read your text"** before/after preview, the **Evaluation Benchmark Table**, the **Benchmark Chart**, and download the official **PDF report**. | Highlight honest scientific methodology: 63 unit tests passing, evaluation across 31 text pairs, 20 sentiment sentences, and 10 cross-lingual pairs (with threshold disclosure note). | **All (CO1-CO4)** |
 
 ---
 
 ## Benchmark Results (From `reports/evaluation.json`)
+
+> **Evaluation Methodology Note**: Similarity thresholds were chosen by inspection on a small dataset; results are optimistic.
 
 ### Plagiarism Detection Methods Benchmark (31 Labeled Pairs)
 | Method | Similarity Threshold | Accuracy | Precision | Recall | F1-Score |
@@ -159,6 +161,24 @@ python run.py --test
 ### Sentiment Analysis Benchmark (20 Labeled Sentences)
 - **Overall Accuracy**: **85.0%**
 - **Evaluation Details**: Tested on mixed academic, critical, and Devanagari sentences.
+
+---
+
+## Git Remote & Repository Synchronization
+
+The current active remote is configured to:
+`https://github.com/snehalpagare272005-jpg/plagiarism_detector_AI-.git`
+
+To push to the alternate repository name (`https://github.com/snehalpagare272005-jpg/PlagiarismAI.git`):
+```powershell
+# Option A: Add as a secondary remote
+git remote add alternate https://github.com/snehalpagare272005-jpg/PlagiarismAI.git
+git push -u alternate main
+
+# Option B: Switch the primary origin URL
+git remote set-url origin https://github.com/snehalpagare272005-jpg/PlagiarismAI.git
+git push -u origin main
+```
 
 ---
 

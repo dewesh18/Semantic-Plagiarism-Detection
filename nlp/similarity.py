@@ -4,10 +4,12 @@ Exact matching, near-exact difflib matching, and semantic embeddings matching.
 """
 
 import math
+import os
 import re
 import unicodedata
 from collections import Counter
 from difflib import SequenceMatcher
+from typing import Any, Dict, List, Optional
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -45,7 +47,7 @@ _CITATION = re.compile(r"\[\s*\d+(?:\s*[,\u2013\-]\s*\d+)*\s*\]")
 _ABBREVIATIONS = ["et al.", "e.g.", "i.e.", "Fig.", "Figs.", "Eq.", "Eqs.", "vs.", "Sec.",
                   "Ref.", "Refs.", "Dr.", "Prof.", "approx.", "cf.", "No.", "Tab.", "Alg."]
 _DOT = "\u2024"
-_SPLIT = re.compile(r"(?:(?<=[.!?])|(?<=[.!?][)\"'\]\u201d\u2019]))\s+(?=[A-Z0-9\"\u201c'(\[])")
+_SPLIT = re.compile(r"(?:(?<=[.!?\u0964])|(?<=[.!?\u0964][)\"'\]\u201d\u2019]))\s+(?=[A-Z0-9\"\u201c'(\[\u0900-\u097F])")
 
 
 def normalize_text(text):
@@ -471,6 +473,9 @@ def scan_against_reference_corpus(model, text: str, document_name: str = "Upload
     total_refs = len(ref_files)
 
     for idx, (title, fpath) in enumerate(ref_files):
+        # Skip if the reference file is the uploaded/target document itself
+        if title == document_name or os.path.basename(fpath) == os.path.basename(document_name):
+            continue
         if progress and total_refs > 0:
             progress(0.3 + 0.6 * (idx / total_refs), f"Comparing against {title}...")
         try:

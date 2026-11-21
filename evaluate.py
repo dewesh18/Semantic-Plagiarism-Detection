@@ -128,6 +128,8 @@ def evaluate_similarity_methods(pairs: List[Dict[str, Any]], model=None):
         "jaccard": {
             "method_name": "Jaccard Word Similarity",
             "threshold": jaccard_thresh,
+            "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+            "pairs_evaluated": len(pairs),
             **compute_classification_metrics(y_true, jaccard_pred),
             "mean_copied_score": round(float(np.mean([s for s, yt in zip(jaccard_scores, y_true) if yt == 1])), 3),
             "mean_not_copied_score": round(float(np.mean([s for s, yt in zip(jaccard_scores, y_true) if yt == 0])), 3),
@@ -135,6 +137,8 @@ def evaluate_similarity_methods(pairs: List[Dict[str, Any]], model=None):
         "tfidf_cosine": {
             "method_name": "TF-IDF Cosine Similarity",
             "threshold": tfidf_thresh,
+            "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+            "pairs_evaluated": len(pairs),
             **compute_classification_metrics(y_true, tfidf_pred),
             "mean_copied_score": round(float(np.mean([s for s, yt in zip(tfidf_scores, y_true) if yt == 1])), 3),
             "mean_not_copied_score": round(float(np.mean([s for s, yt in zip(tfidf_scores, y_true) if yt == 0])), 3),
@@ -142,6 +146,8 @@ def evaluate_similarity_methods(pairs: List[Dict[str, Any]], model=None):
         "embedding_cosine": {
             "method_name": "Sentence Embeddings Cosine",
             "threshold": embedding_thresh,
+            "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+            "pairs_evaluated": len(pairs),
             **compute_classification_metrics(y_true, embedding_pred),
             "mean_copied_score": round(float(np.mean([s for s, yt in zip(embedding_scores, y_true) if yt == 1])), 3),
             "mean_not_copied_score": round(float(np.mean([s for s, yt in zip(embedding_scores, y_true) if yt == 0])), 3),
@@ -255,10 +261,13 @@ def evaluate_multilingual_methods(multilingual_pairs: List[Dict[str, Any]], mode
     # Cross-lingual representations between different languages (Devanagari vs Latin)
     # have higher variance than monolingual pairs. We use 0.60 based on separation analysis.
     thresh = 0.60
+    per_pair_records = []
 
-    print("\n--- Multilingual Cross-Lingual Evaluation Details ---")
+    print("\n--- Multilingual Cross-Lingual Evaluation Details (10 Pairs) ---")
     active_multi_model = multi_model or model
     print(f"Active embedding model for cross-lingual evaluation: {getattr(active_multi_model, '_model_card_data', {}).get('model_name', 'paraphrase-multilingual-MiniLM-L12-v2')}")
+    print(f"{'Pair':<6} | {'Label':<10} | {'Provider Used':<34} | {'Translate Score':<16} | {'Direct Score':<14}")
+    print("-" * 88)
 
     for idx, p in enumerate(multilingual_pairs):
         text_a, text_b = p["text_a"], p["text_b"]
@@ -270,12 +279,12 @@ def evaluate_multilingual_methods(multilingual_pairs: List[Dict[str, Any]], mode
             direct_sim = compute_tfidf_cosine_similarity(text_a, text_b)
         direct_scores.append(direct_sim)
 
-        # 2. Translate-then-compare (clear cache ensures live provider reporting)
+        # 2. Translate-then-compare (use_cache=False to evaluate live provider resolution)
         lang_a = detect_language(text_a)
         lang_b = detect_language(text_b)
 
-        trans_res_a = translate_text(text_a, lang_a["code"]) if lang_a["is_multilingual"] else {"translated_text": text_a, "provider": "English Native"}
-        trans_res_b = translate_text(text_b, lang_b["code"]) if lang_b["is_multilingual"] else {"translated_text": text_b, "provider": "English Native"}
+        trans_res_a = translate_text(text_a, lang_a["code"], use_cache=False) if lang_a["is_multilingual"] else {"translated_text": text_a, "provider": "English Native"}
+        trans_res_b = translate_text(text_b, lang_b["code"], use_cache=False) if lang_b["is_multilingual"] else {"translated_text": text_b, "provider": "English Native"}
 
         trans_a = trans_res_a["translated_text"]
         trans_b = trans_res_b["translated_text"]
@@ -289,7 +298,14 @@ def evaluate_multilingual_methods(multilingual_pairs: List[Dict[str, Any]], mode
         translate_scores.append(trans_sim)
 
         lbl = p["label"]
-        print(f"  Pair {idx+1:02d} [{lbl:<10}]: Direct Cosine={direct_sim:.4f} | Transferred Cosine={trans_sim:.4f} | Provider: {provider_used}")
+        print(f"Pair {idx+1:02d} | {lbl:<10} | {provider_used:<34} | {trans_sim:<16.4f} | {direct_sim:<14.4f}")
+        per_pair_records.append({
+            "pair_id": idx + 1,
+            "label": lbl,
+            "provider_used": provider_used,
+            "translate_then_compare_score": round(float(trans_sim), 4),
+            "direct_multilingual_score": round(float(direct_sim), 4)
+        })
 
     direct_pred = [1 if s >= thresh else 0 for s in direct_scores]
     trans_pred = [1 if s >= thresh else 0 for s in translate_scores]
@@ -298,18 +314,23 @@ def evaluate_multilingual_methods(multilingual_pairs: List[Dict[str, Any]], mode
         "direct_embeddings": {
             "method_name": "Direct Multilingual Embeddings (paraphrase-multilingual-MiniLM-L12-v2)",
             "threshold": thresh,
-            "threshold_rationale": "Principled 0.60 decision boundary separating aligned cross-lingual semantics (mean 0.86) from unrelated topics (mean 0.12)",
+            "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+            "pairs_evaluated": len(multilingual_pairs),
             **compute_classification_metrics(y_true, direct_pred),
             "mean_copied_score": round(float(np.mean([s for s, yt in zip(direct_scores, y_true) if yt == 1])), 3),
             "mean_not_copied_score": round(float(np.mean([s for s, yt in zip(direct_scores, y_true) if yt == 0])), 3),
+            "per_pair_results": per_pair_records,
         },
         "translate_then_compare": {
             "method_name": "Translate-Then-Compare (Cloud/Local Pipeline)",
             "threshold": thresh,
+            "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+            "pairs_evaluated": len(multilingual_pairs),
             "providers_used": list(set(translation_providers)),
             **compute_classification_metrics(y_true, trans_pred),
             "mean_copied_score": round(float(np.mean([s for s, yt in zip(translate_scores, y_true) if yt == 1])), 3),
             "mean_not_copied_score": round(float(np.mean([s for s, yt in zip(translate_scores, y_true) if yt == 0])), 3),
+            "per_pair_results": per_pair_records,
         },
     }
 
@@ -367,7 +388,8 @@ def run_full_evaluation():
             "tfidf_threshold": 0.35,
             "monolingual_embedding_threshold": 0.65,
             "crosslingual_embedding_threshold": 0.60,
-            "note": "Thresholds are determined by standard information retrieval heuristics (Jaccard > 0.25 token overlap; TF-IDF cosine > 0.35 vector similarity; embedding cosine > 0.65 for near/semantic paraphrase; cross-lingual cosine > 0.60 for multilingual semantic alignment). Note: small evaluation set is used as demonstration benchmark; thresholds were not hyperparameter-tuned on this set."
+            "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
+            "note": "Thresholds are determined by standard information retrieval heuristics (Jaccard > 0.25 token overlap; TF-IDF cosine > 0.35 vector similarity; embedding cosine > 0.65 for near/semantic paraphrase; cross-lingual cosine > 0.60 for multilingual semantic alignment). Note: small evaluation set is used as demonstration benchmark; thresholds were chosen by inspection on a small dataset; results are optimistic."
         },
         "limitations": [
             "Dataset sizes (31 text pairs, 20 sentiment sentences, 10 cross-lingual pairs) are concise to enable rapid interactive testing and grading.",

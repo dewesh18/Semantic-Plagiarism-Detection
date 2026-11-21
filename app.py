@@ -155,7 +155,7 @@ from nlp.analysis import (
 )
 from nlp.topics import extract_document_topics
 from nlp.multilingual import detect_language_smart, translate_text_smart
-from llm.assistant import fix_passage
+from llm.assistant import fix_passage, verify_gemini_model_at_startup
 
 QUERY_EXACT, QUERY_PHRASE, QUERY_KEYWORDS = "Exact phrase", "Distinctive phrase", "Technical keywords"
 QUERY_WEIGHT = {QUERY_EXACT: 3.0, QUERY_PHRASE: 2.0, QUERY_KEYWORDS: 1.0}
@@ -184,12 +184,47 @@ NOT_FOUND_MESSAGE = ("Web search could not be completed. "
 # --------------------------------------------------------------------------
 # 1. Model
 # --------------------------------------------------------------------------
+MULTILINGUAL_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+FALLBACK_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
+_MODEL_LOAD_STATUS = {
+    "name": "",
+    "is_multilingual": True,
+    "warning": ""
+}
+
+
 @st.cache_resource(show_spinner=False)
 def load_bert_model():
-    """Load Sentence-BERT once per server process (cached by Streamlit)."""
+    """Load Sentence-BERT once per server process with multilingual priority."""
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(MODEL_NAME)
+    # 1. Try multilingual model
+    try:
+        model = SentenceTransformer(MULTILINGUAL_MODEL_NAME, local_files_only=True)
+        _MODEL_LOAD_STATUS["name"] = MULTILINGUAL_MODEL_NAME
+        _MODEL_LOAD_STATUS["is_multilingual"] = True
+        _MODEL_LOAD_STATUS["warning"] = ""
+        print(f"[*] PlagiarismAI: Loaded Multilingual Embedding Model: {MULTILINGUAL_MODEL_NAME}")
+        return model
+    except Exception as exc_multi:
+        print(f"[!] Warning: Multilingual model failed to load ({exc_multi}). Attempting fallback to English-only model.")
+
+    # 2. Try English-only model fallback
+    try:
+        model = SentenceTransformer(FALLBACK_MODEL_NAME, local_files_only=True)
+    except Exception:
+        model = SentenceTransformer(FALLBACK_MODEL_NAME)
+
+    _MODEL_LOAD_STATUS["name"] = FALLBACK_MODEL_NAME
+    _MODEL_LOAD_STATUS["is_multilingual"] = False
+    _MODEL_LOAD_STATUS["warning"] = (
+        f"Multilingual model ({MULTILINGUAL_MODEL_NAME}) failed to load. "
+        f"Using English-only model ({FALLBACK_MODEL_NAME}). Cross-lingual Devanagari matching will rely on translation."
+    )
+    print(f"[*] PlagiarismAI: Loaded English-only Embedding Model: {FALLBACK_MODEL_NAME}")
+    print(f"[!] Warning: {_MODEL_LOAD_STATUS['warning']}")
+    return model
 
 
 def encode_sentences(model, sentences):
@@ -1472,7 +1507,13 @@ def _tab_results():
     # Language Badge
     lang_name = lang.get("language", "English")
     if lang.get("is_multilingual"):
-        st.info(f"🌐 **Language Detected:** {lang_name} (Confidence: {int(lang.get('confidence', 0.8)*100)}%) — Automatically translated to English for comparison.")
+        trans_info = nlp.get("translation") or {}
+        prov = trans_info.get("provider", "")
+        if "Google Cloud" in prov:
+            prov_label = "Google Cloud Translation"
+        else:
+            prov_label = "fallback translator"
+        st.info(f"🌐 **Language Detected:** {lang_name} (Confidence: {int(lang.get('confidence', 0.8)*100)}%) — translated for comparison via **{prov_label}**.")
     else:
         st.caption(f"🌐 **Language:** {lang_name}")
 
@@ -1596,6 +1637,11 @@ def _tab_fix():
             fix_res = fix_passage(passage_input, source_input)
 
         st.divider()
+        if fix_res.get("is_fallback"):
+            st.warning("⚠️ **AI unavailable - showing a template** (API key not configured or offline).")
+        else:
+            st.success(f"✨ **Powered by Gemini** ({fix_res.get('provider')})")
+
         col1, col2 = st.columns(2)
 
         with col1:
@@ -1653,6 +1699,7 @@ def _tab_report(settings):
 
     # Section CO2 & CO3: Real Evaluation Benchmarks
     st.markdown("#### CO2 & CO3: Algorithm Benchmark Evaluation")
+    st.warning("⚠️ **Evaluation Notice:** Similarity thresholds were chosen by inspection on a small dataset; results are optimistic.")
     eval_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports", "evaluation.json")
     if os.path.exists(eval_path):
         try:
@@ -1665,6 +1712,7 @@ def _tab_report(settings):
             for key, val in p_bench.items():
                 rows.append({
                     "Method": val.get("method_name"),
+                    "Data Evaluated": f"{val.get('pairs_evaluated', 31)} pairs",
                     "Threshold": val.get("threshold"),
                     "Accuracy": f"{val.get('accuracy', 0)*100:.1f}%",
                     "Precision": f"{val.get('precision', 0)*100:.1f}%",
@@ -1674,6 +1722,7 @@ def _tab_report(settings):
             for key, val in m_bench.items():
                 rows.append({
                     "Method": val.get("method_name"),
+                    "Data Evaluated": f"{val.get('pairs_evaluated', 10)} cross-lingual pairs",
                     "Threshold": val.get("threshold"),
                     "Accuracy": f"{val.get('accuracy', 0)*100:.1f}%",
                     "Precision": f"{val.get('precision', 0)*100:.1f}%",
@@ -1726,8 +1775,15 @@ def main():
     st.set_page_config(page_title=f"{APP_NAME} - Semantic Plagiarism Detection",
                        page_icon="\U0001F50E", layout="wide")
     init_db()
+    verify_gemini_model_at_startup()
+
     st.title("\U0001F50E PlagiarismAI")
     st.caption("BERT-based semantic plagiarism detection with real web sources")
+
+    # Show warning if multilingual model failed and English-only model is active
+    if not _MODEL_LOAD_STATUS.get("is_multilingual", True) and _MODEL_LOAD_STATUS.get("warning"):
+        st.warning(f"⚠️ **Model Notice:** {_MODEL_LOAD_STATUS['warning']}")
+
     settings = _sidebar_settings()
     tabs = st.tabs(["Check", "Results", "Fix it for me", "Project Report"])
     with tabs[0]:

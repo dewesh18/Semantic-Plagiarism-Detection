@@ -7,10 +7,16 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from llm.prompts import build_fix_prompt, SYSTEM_ROLE_INSTRUCTION
-from llm.assistant import fix_passage, _clean_json_response, _get_fallback_fix
+from llm.assistant import fix_passage, _clean_json_response, _get_fallback_fix, verify_gemini_model_at_startup
 
 
 class TestLLMAssistant(unittest.TestCase):
+    def test_verify_gemini_model_at_startup(self):
+        status = verify_gemini_model_at_startup()
+        self.assertIn("model", status)
+        self.assertIn("sdk", status)
+        self.assertEqual(status["sdk"], "google-genai")
+
     def test_build_fix_prompt_structure_and_safety_delimiters(self):
         prompt = build_fix_prompt("This is a flagged sentence.", "Sample Source", "https://example.com")
         self.assertIn("<<<STUDENT_FLAGGED_PASSAGE>>>", prompt)

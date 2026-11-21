@@ -1,25 +1,63 @@
 """
 LLM Assistant Module for PlagiarismAI (CO4).
-Integrates Gemini API using google.genai / google.generativeai with:
-- Configurable model (defaults to gemini-1.5-flash or gemini-2.0-flash-exp).
-- Low temperature setting (0.3).
+Integrates Gemini API using the official Google Gen AI SDK (`google-genai`):
+- Configurable model via GEMINI_MODEL env var (defaults to gemini-2.5-flash).
+- Temperature setting (0.3) for academic precision.
 - Safe JSON output parsing with markdown code-fence stripping and retry.
-- In-memory / SQLite caching by passage hash to save API quota.
-- Graceful fallbacks for missing API key, network timeout, and rate limits.
+- In-memory session caching by passage hash to save API quota.
+- Graceful template fallbacks when API key is missing, network is offline, or rate limits occur.
 """
 
 import hashlib
 import json
 import os
 import re
+import sys
 from typing import Any, Dict, Optional
 
 from llm.prompts import SYSTEM_ROLE_INSTRUCTION, build_fix_prompt
 
-DEFAULT_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+DEFAULT_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # In-memory session cache for instant repeat clicks
 _FIX_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+def verify_gemini_model_at_startup() -> Dict[str, Any]:
+    """
+    Startup diagnostic check: validates GEMINI_MODEL setting and checks
+    if the Google Gen AI SDK and API key are available.
+    Prints a clear message if the model name is rejected or missing.
+    """
+    active_model = os.getenv("GEMINI_MODEL", DEFAULT_MODEL_NAME).strip()
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+
+    status = {
+        "model": active_model,
+        "sdk": "google-genai",
+        "key_configured": bool(api_key),
+        "valid": True,
+        "message": ""
+    }
+
+    # Known current valid Gemini models on Google Gen AI SDK
+    known_models = {
+        "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite",
+        "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-pro-exp"
+    }
+
+    if active_model not in known_models and not active_model.startswith("gemini-"):
+        print(f"[!] WARNING: Configured GEMINI_MODEL='{active_model}' may not be recognized by the Google Gen AI SDK.", file=sys.stderr)
+        print(f"    Supported models include: {', '.join(sorted(known_models))}", file=sys.stderr)
+        status["valid"] = False
+        status["message"] = f"Unrecognized model '{active_model}'. Use a known model like gemini-2.5-flash."
+
+    if not api_key:
+        print(f"[*] Note: GEMINI_API_KEY not configured. GenAI assistant will use offline academic template fallback.")
+    else:
+        print(f"[*] GenAI Assistant configured: Model='{active_model}' using official google-genai SDK.")
+
+    return status
 
 
 def _get_cache_key(passage: str, source_title: str) -> str:
@@ -42,10 +80,7 @@ def _get_fallback_fix(passage: str, source_title: str = "", source_url: str = ""
     """
     source_ref = source_title or source_url or "the original author"
     words = passage.split()
-    short_preview = " ".join(words[:8]) + "..." if len(words) > 8 else passage
 
-    # Simple grammatical inversion heuristic for demo fallback
-    words_reversed = list(words)
     if len(words) > 4:
         rewrite_candidate = f"According to findings in {source_ref}, research indicates that {passage.lower().rstrip('.')}."
     else:
@@ -54,48 +89,39 @@ def _get_fallback_fix(passage: str, source_title: str = "", source_url: str = ""
     return {
         "explanation": f"This statement matches phrasing found in {source_ref}. Paraphrasing into your own words will demonstrate deeper comprehension.",
         "rewrite": rewrite_candidate,
+        "suggested_rewrite": rewrite_candidate,
         "citation": f"Adapted from {source_ref}. Retrieved from: {source_url or 'Reference document'}.",
+        "citation_suggestion": f"Adapted from {source_ref}. Retrieved from: {source_url or 'Reference document'}.",
         "tips": [
             "Express the underlying idea rather than modifying individual vocabulary words.",
             "Synthesize points from multiple scholarly papers to establish originality.",
             "Always include formal attribution even when paraphrasing substantially."
         ],
-        "provider": "Template Fallback Engine (No API Key)"
+        "provider": "Template Fallback Engine (Offline)",
+        "is_fallback": True
     }
 
 
 def call_gemini_api(prompt: str, model_name: str, api_key: str, temperature: float = 0.3) -> str:
     """
-    Invokes Gemini API via google.genai or google.generativeai.
+    Invokes Gemini API via the official Google Gen AI SDK (`google-genai`).
     """
-    # 1. Try google.genai (newest SDK)
     try:
         from google import genai
+        from google.genai import types
+
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model=model_name,
             contents=prompt,
-            config={"temperature": temperature, "system_instruction": SYSTEM_ROLE_INSTRUCTION}
+            config=types.GenerateContentConfig(
+                temperature=temperature,
+                system_instruction=SYSTEM_ROLE_INSTRUCTION
+            )
         )
         return response.text
-    except ImportError:
-        pass
     except Exception as e:
-        raise RuntimeError(f"google.genai error: {e}")
-
-    # 2. Try google.generativeai (installed SDK)
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=SYSTEM_ROLE_INSTRUCTION,
-            generation_config={"temperature": temperature}
-        )
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        raise RuntimeError(f"Gemini API invocation error: {e}")
+        raise RuntimeError(f"google-genai API error ({type(e).__name__}): {e}")
 
 
 def fix_passage(
@@ -112,9 +138,12 @@ def fix_passage(
         return {
             "explanation": "No text provided to analyze.",
             "rewrite": "",
+            "suggested_rewrite": "",
             "citation": "",
+            "citation_suggestion": "",
             "tips": [],
-            "provider": "None"
+            "provider": "None",
+            "is_fallback": True
         }
 
     cache_key = _get_cache_key(passage, source_title)
@@ -141,7 +170,6 @@ def fix_passage(
             cleaned = _clean_json_response(raw_response)
             parsed = json.loads(cleaned)
 
-            # Ensure all required keys exist
             explanation = parsed.get("explanation", "")
             rewrite = parsed.get("rewrite", "")
             citation = parsed.get("citation", "")
@@ -150,24 +178,28 @@ def fix_passage(
             result = {
                 "explanation": explanation,
                 "rewrite": rewrite,
+                "suggested_rewrite": rewrite,
                 "citation": citation,
+                "citation_suggestion": citation,
                 "tips": tips if isinstance(tips, list) else [str(tips)],
                 "provider": f"Gemini API ({active_model})",
+                "is_fallback": False,
                 "cached": False
             }
             _FIX_CACHE[cache_key] = result
             return result
 
         except json.JSONDecodeError:
-            # On first bad JSON, retry with stricter hint
             if attempt == 0:
                 prompt += "\nREMINDER: Return ONLY a valid JSON object. Do not wrap in markdown or include extraneous commentary."
                 continue
         except Exception as e:
-            # Friendly error handling
             err_msg = str(e)
             if "429" in err_msg or "quota" in err_msg.lower():
                 user_msg = "Gemini API rate limit reached. Returning educational writing template."
+            elif "not found" in err_msg.lower() or "404" in err_msg:
+                user_msg = f"Model '{active_model}' was rejected or not found. Check GEMINI_MODEL setting."
+                print(f"[!] ERROR: Gemini API rejected model name '{active_model}': {err_msg}", file=sys.stderr)
             elif "network" in err_msg.lower() or "connection" in err_msg.lower() or "11001" in err_msg:
                 user_msg = "Network connection unavailable. Using offline guidance template."
             else:
