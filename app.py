@@ -1597,7 +1597,8 @@ def _tab_results():
     if lang_info.get("is_multilingual"):
         trans_info = as_dict(nlp.get("translation"))
         prov = trans_info.get("provider", "fallback translator")
-        if "Google Cloud" in prov:
+        has_google_key = bool(os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip())
+        if has_google_key and "Google Cloud" in prov:
             prov_label = "Google Cloud Translation"
         else:
             prov_label = "fallback translator"
@@ -1884,7 +1885,7 @@ def _tab_report(settings):
 |---|---|---|---|
 | **CO1** | Text extraction, preprocessing, cleaning and vectorization (TF-IDF & Embeddings) | **7 Marks** | ✅ Complete (`nlp/preprocess.py`, `nlp/extract.py`) |
 | **CO2** | Sentiment analysis (VADER), Information extraction (NER, keywords, citations) & Benchmark | **8 Marks** | ✅ Complete (`nlp/analysis.py`, `evaluate.py`) |
-| **CO3** | Topic modeling (LDA) & Multilingual NLP (Hindi/Marathi detection, Cloud AI Translation) | **7 Marks** | ✅ Complete (`nlp/topics.py`, `nlp/multilingual.py`) |
+| **CO3** | Topic modeling (LDA) & Multilingual NLP (Hindi/Marathi detection, fallback translator / Google Cloud API) | **7 Marks** | ✅ Complete (`nlp/topics.py`, `nlp/multilingual.py`) |
 | **CO4** | GenAI Academic Writing Assistant (Gemini LLM, prompt engineering, few-shot, safety) | **8 Marks** | ✅ Complete (`llm/prompts.py`, `llm/assistant.py`) |
 """)
 
@@ -1929,9 +1930,14 @@ def _tab_report(settings):
                     "Recall": f"{val.get('recall', 0)*100:.1f}%",
                     "F1-Score": f"{val.get('f1', 0):.3f}"
                 })
+            has_google_key = bool(os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip())
             for key, val in m_bench.items():
+                m_name = val.get("method_name", "")
+                if "Translate-Then-Compare" in m_name:
+                    trans_label = "Google Cloud Translation" if has_google_key else "fallback translator"
+                    m_name = f"Translate-Then-Compare ({trans_label})"
                 rows.append({
-                    "Method": val.get("method_name"),
+                    "Method": m_name,
                     "Data Evaluated": f"{val.get('pairs_evaluated', 10)} cross-lingual pairs",
                     "Threshold": val.get("threshold"),
                     "Accuracy": f"{val.get('accuracy', 0)*100:.1f}%",
@@ -1940,6 +1946,16 @@ def _tab_report(settings):
                     "F1-Score": f"{val.get('f1', 0):.3f}"
                 })
             st.dataframe(rows, use_container_width=True)
+
+            if not has_google_key:
+                st.info("ℹ️ **Translation Provider Status:** `GOOGLE_TRANSLATE_API_KEY` is not set — cross-lingual checks and evaluation use the **fallback translator**.")
+            else:
+                st.info("ℹ️ **Translation Provider Status:** `GOOGLE_TRANSLATE_API_KEY` is configured — cross-lingual translation via **Google Cloud Translation**.")
+
+            if eval_data.get("limitations"):
+                with st.expander("ℹ️ Benchmark Methodology & Provider Notes", expanded=False):
+                    for lim in eval_data["limitations"]:
+                        st.markdown(f"- {lim}")
         except Exception:
             st.warning("Could not read reports/evaluation.json.")
 
