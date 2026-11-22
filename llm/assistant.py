@@ -1,5 +1,5 @@
 """
-LLM Assistant Module for PlagiarismAI (CO4).
+LLM Assistant Module for PlagiarismAI.
 Integrates Gemini API using the official Google Gen AI SDK (`google-genai`):
 - Configurable model via GEMINI_MODEL env var (defaults to gemini-2.5-flash).
 - Temperature setting (0.3) for academic precision.

@@ -1,5 +1,5 @@
 """
-Preprocessing and Vectorization Pipeline (CO1).
+Preprocessing and Vectorization Pipeline.
 Extracts text, cleans, tokenizes, removes stopwords, lemmatizes,
 and provides TF-IDF + sentence embedding vectorization.
 """

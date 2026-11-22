@@ -2186,6 +2186,8 @@ def _tab_results():
         has_google_key = bool(os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip())
         if has_google_key and "Google Cloud" in prov:
             prov_label = "Google Cloud Translation"
+        elif "Gemini" in prov:
+            prov_label = "Gemini AI Translation"
         else:
             prov_label = "fallback translator"
         conf = int(lang_info.get("confidence", 0.8) * 100)
@@ -2333,24 +2335,139 @@ def _history_tab():
 
 
 def _tab_report(settings):
-    st.markdown("### 🎓 Course Outcome (CO) Rubric Assessment & Technical Report")
-    st.write("Examiner evaluation panel, benchmark metrics, preprocessing inspection, and technical tools.")
+    st.header("About this project")
+    st.caption("The NLP and AI concepts used in this project, and how each one is used.")
 
-    # Summary rubric mapping table
-    st.markdown("#### Project Demonstration Rubric (30 Marks Total)")
+    # 1. Short "How it works" flow (one line per step)
+    st.markdown("#### 🔄 How it works")
     st.markdown("""
-| Course Outcome | Description | Weight | Status & Implementation |
-|---|---|---|---|
-| **CO1** | Text extraction, preprocessing, cleaning and vectorization (TF-IDF & Embeddings) | **7 Marks** | ✅ Complete (`nlp/preprocess.py`, `nlp/extract.py`) |
-| **CO2** | Sentiment analysis (VADER), Information extraction (NER, keywords, citations) & Benchmark | **8 Marks** | ✅ Complete (`nlp/analysis.py`, `evaluate.py`) |
-| **CO3** | Topic modeling (LDA) & Multilingual NLP (Hindi/Marathi detection, fallback translator / Google Cloud API) | **7 Marks** | ✅ Complete (`nlp/topics.py`, `nlp/multilingual.py`) |
-| **CO4** | GenAI Academic Writing Assistant (Gemini LLM, prompt engineering, few-shot, safety) | **8 Marks** | ✅ Complete (`llm/prompts.py`, `llm/assistant.py`) |
+1. **Upload or paste:** Provide your text directly or upload a PDF, Word (DOCX), or plain text (TXT) file.
+2. **Extract text:** Extract raw text and document structure using dedicated format extractors (`pypdf`, `python-docx`).
+3. **Clean and prepare:** Normalize unicode, strip noise and citations, segment into sentences, remove stopwords, and lemmatize tokens.
+4. **Search the web:** Formulate exact quoted phrases and distinctive keyword queries across beginning, middle, and end sections.
+5. **Read the pages:** Retrieve candidate articles via Wikipedia REST API, Tavily raw content/extract endpoints, or direct download.
+6. **Compare sentences:** Cascade comparisons through exact containment, SequenceMatcher near-copy, and Sentence-BERT embeddings.
+7. **Label and rank sources:** Classify sentences as Exact copy, Near copy, Similar meaning, or Original, ranking verified sources by highest match %.
+8. **Analyse tone, topics and details:** Compute emotional tone via VADER, extract named entities, keywords, academic citations, and LDA topic distributions.
+9. **Rewrite and cite with AI:** Generate educational explanations, academic rewrites, APA citations, and originality tips via Gemini LLM.
+10. **Report:** View interactive originality metrics, inspect matched sources, and download an official PDF audit report.
 """)
 
     st.divider()
 
-    # Section CO1
-    st.markdown("#### CO1: Text Preprocessing & Vectorization Inspection")
+    # 2. Concept Groups
+    st.markdown("#### 🧠 NLP & AI Concepts Implemented in PlagiarismAI")
+    st.caption("Each concept is verified against the codebase. Fallback mechanisms are explicitly noted.")
+
+    # Group 1: Text Preparation
+    with st.expander("📄 Text Preparation", expanded=True):
+        st.markdown("""
+| Concept | What it is | How this project uses it | File |
+| :--- | :--- | :--- | :--- |
+| **Text extraction (PDF, DOCX, TXT)** | Extracts clean raw character streams from binary and structured document formats. | Reads uploaded files via `pypdf`, `python-docx`, and UTF-8 text decoders. | `nlp/extract.py` |
+| **Text cleaning & normalization** | Converts text to Unicode NFKC standard, normalizes quotes/dashes, and strips noise. | Removes URLs, academic markers, citation numbers, and excessive whitespace. | `nlp/preprocess.py`, `nlp/similarity.py` |
+| **Sentence segmentation** | Splits unformatted paragraphs into discrete, grammatically coherent sentence units. | Regex splitter breaks document into sentences so each can be independently matched and highlighted. | `nlp/similarity.py`, `nlp/preprocess.py` |
+| **Tokenization** | Segments sentence strings into individual word tokens for linguistic inspection. | Splits sentences into whitespace/punctuation tokens for vocabulary and frequency counting. | `nlp/preprocess.py`, `nlp/analysis.py` |
+| **Stopword removal** | Filters out high-frequency grammatical words carrying minimal semantic distinction. | Drops common English words (and Devanagari particles) so comparison focuses on content words. | `nlp/preprocess.py`, `nlp/similarity.py` |
+| **Lemmatization** | Reduces inflected word variations down to their base canonical dictionary lemma. | Applies NLTK WordNet lemmatizer with a rule-based suffix stemmer as fallback. | `nlp/preprocess.py` |
+""")
+
+    # Group 2: Turning text into numbers
+    with st.expander("🔢 Turning Text into Numbers", expanded=False):
+        st.markdown("""
+| Concept | What it is | How this project uses it | File |
+| :--- | :--- | :--- | :--- |
+| **TF-IDF vectorization** | Weights words by term frequency scaled by inverse document frequency across a corpus. | Converts document sentences into 5,000-dimensional sparse vectors using scikit-learn. | `nlp/preprocess.py` |
+| **Sentence embeddings** | Maps full sentences into dense 384-dimensional continuous vector representations. | Encodes sentences with `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (falls back to `all-MiniLM-L6-v2`). | `nlp/similarity.py`, `app.py` |
+""")
+
+    # Group 3: Finding copied text
+    with st.expander("🔍 Finding Copied Text", expanded=False):
+        st.markdown(r"""
+| Concept | What it is | How this project uses it | File |
+| :--- | :--- | :--- | :--- |
+| **Exact & near-exact matching** | Identifies word-for-word duplication and slight character/word edits. | Verifies verbatim containment (100% Exact copy) and uses SequenceMatcher ($\ge 90\%$) for near copies. | `nlp/similarity.py` |
+| **Jaccard similarity** | Measures the ratio of shared unique vocabulary tokens over the union of tokens. | Evaluates surface vocabulary overlap between compared document pairs. | `nlp/preprocess.py` |
+| **Cosine similarity** | Computes the cosine of the angle between two mathematical vectors. | Calculates similarity between TF-IDF term vectors and dense Sentence-BERT vectors. | `nlp/similarity.py`, `nlp/preprocess.py` |
+| **Semantic similarity** | Evaluates contextual meaning overlap regardless of whether identical vocabulary is used. | Flags paraphrased sentences exceeding the semantic threshold ($\ge 70\%$) using BERT embeddings. | `nlp/similarity.py` |
+| **Combined originality score** | Blends lexical, statistical, and neural similarity scores into a single composite metric. | Weights Jaccard (20%), TF-IDF cosine (30%), and Sentence-BERT (50%) for document comparison. | `nlp/preprocess.py` |
+| **Web search retrieval** | Discovers candidate online source documents via external search engine APIs. | Executes exact-phrase and keyword queries via Tavily Search API (or Brave Search API). | `app.py` |
+| **Webpage & PDF text extraction** | Downloads and converts HTML web pages and online PDFs into plain text. | Extracts text via official Wikipedia REST API, Tavily Extract, and BeautifulSoup filtering. | `app.py`, `nlp/extract.py` |
+| **Source ranking by match %** | Orders discovered source documents from greatest match overlap to least. | Ranks verified sources by `best_match_pct` descending, followed by match count. | `app.py`, `nlp/similarity.py` |
+""")
+
+    # Group 4: Understanding the writing
+    with st.expander("📊 Understanding the Writing", expanded=False):
+        st.markdown("""
+| Concept | What it is | How this project uses it | File |
+| :--- | :--- | :--- | :--- |
+| **Sentiment analysis** | Classifies emotional tone into Positive, Negative, or Neutral with confidence. | Uses VADER intensity scoring with a rule-based Hindi/Marathi Devanagari lexicon fallback. | `nlp/analysis.py` |
+| **Named entity recognition (NER)** | Identifies real-world entities: people, organizations, locations, and dates. | Uses spaCy (`en_core_web_sm`) with regex-based capitalization and date heuristic fallback. | `nlp/analysis.py` |
+| **Keyword extraction** | Discovers the most representative, distinguishing key terms from text. | Employs KeyBERT embedding-based keyphrase extraction with frequency-filtering fallback. | `nlp/analysis.py` |
+| **Citation extraction** | Detects academic bibliographic references, numeric citations, DOIs, and URLs. | Uses regular expressions matching brackets `[1]`, author-year `(Smith, 2020)`, and DOI prefixes. | `nlp/analysis.py` |
+| **Topic modeling with LDA** | Discovers hidden thematic topics across documents using Latent Dirichlet Allocation. | Employs scikit-learn's `LatentDirichletAllocation` over a reference academic corpus (keyword fallback for $<150$ words). | `nlp/topics.py` |
+| **Topic overlap score** | Measures thematic similarity across documents based on their topic distributions. | Calculates cosine similarity across document topic probability distributions. | `nlp/topics.py` |
+""")
+
+    # Group 5: Multilingual
+    with st.expander("🌐 Multilingual NLP", expanded=False):
+        st.markdown("""
+| Concept | What it is | How this project uses it | File |
+| :--- | :--- | :--- | :--- |
+| **Language detection** | Determines the natural language and script of submitted text. | Inspects Devanagari character ratio (U+0900–U+097F), distinctive Marathi/Hindi marker words, and `langdetect`. | `nlp/multilingual.py` |
+| **Machine translation** | Converts non-English sentences to English for standardized analysis. | Uses Google Cloud Translation API if `GOOGLE_TRANSLATE_API_KEY` is set; uses offline fallback engine otherwise. | `nlp/multilingual.py` |
+| **Cross-lingual matching** | Compares sentences across different languages directly or via translation. | Uses multilingual Sentence-BERT (`paraphrase-multilingual-MiniLM-L12-v2`) and translate-then-compare alignment. | `nlp/multilingual.py`, `nlp/similarity.py` |
+""")
+
+    # Group 6: Generative AI
+    with st.expander("✨ Generative AI", expanded=False):
+        st.markdown("""
+| Concept | What it is | How this project uses it | File |
+| :--- | :--- | :--- | :--- |
+| **Large language model (LLM)** | Generates contextual explanations, academic rewrites, and APA citations. | Powered by the official Google Gen AI SDK (`google-genai`) using model `gemini-3.5-flash` (configurable). | `llm/assistant.py` |
+| **Prompt engineering** | Guides LLM behavior using explicit instructions, schema constraints, and examples. | Defines academic persona role, few-shot examples, JSON schema enforcement, and temperature 0.3. | `llm/prompts.py`, `llm/assistant.py` |
+| **Prompt-injection protection** | Prevents untrusted document text from overriding assistant instructions. | Encloses user text inside strict structural isolation delimiters (`<<<PASSAGE>>>`). | `llm/prompts.py` |
+| **Response caching & fallback** | Saves quota and ensures graceful offline resilience when APIs are unavailable. | Stores suggestions in-memory by SHA-256 passage hash and falls back to structured templates if offline. | `llm/assistant.py` |
+""")
+
+    # Group 7: Evaluation
+    with st.expander("📈 Evaluation & Benchmarks", expanded=False):
+        st.markdown("""
+| Concept | What it is | How this project uses it | File |
+| :--- | :--- | :--- | :--- |
+| **Evaluation metrics** | Quantifies classifier effectiveness against ground truth labels. | Computes Accuracy, Precision, Recall, F1-Score, and Confusion Matrix across methods. | `evaluate.py` |
+| **Benchmark datasets** | Curated reference sets of labeled original, paraphrased, and copied text. | Evaluates 31 plagiarism detection pairs, 20 sentiment sentences, and 10 multilingual pairs. | `data/eval/`, `reports/evaluation.json` |
+""")
+
+    st.divider()
+
+    # 3. Compact "Libraries and tools used" list
+    st.markdown("#### 🛠️ Libraries and Tools Used")
+    st.markdown("""
+- **Streamlit** (`streamlit`): Web application dashboard, session state, and reactive interface.
+- **Sentence-Transformers** (`sentence-transformers`): Pre-trained multilingual neural embeddings (`paraphrase-multilingual-MiniLM-L12-v2`).
+- **Scikit-Learn** (`scikit-learn`): TF-IDF vectorization, cosine similarity, Latent Dirichlet Allocation (LDA), and evaluation metrics.
+- **Google Gen AI SDK** (`google-genai`): Official Google SDK for Gemini LLM academic assistance (`gemini-3.5-flash`).
+- **BeautifulSoup4** (`beautifulsoup4`): HTML parsing, DOM traversal, and noise removal for web page text extraction.
+- **Requests** (`requests`): HTTP client for search APIs (Tavily/Brave), Wikipedia REST API, and Google Cloud Translation.
+- **PyPDF** (`pypdf`): PDF binary document parsing and text extraction.
+- **python-docx** (`python-docx`): Microsoft Word (.docx) document parsing and text extraction.
+- **Plotly** (`plotly`): Interactive visual charts (similarity score distributions and source match breakdowns).
+- **fpdf2** (`fpdf2`): Programmatic generation and layout of downloadable PDF originality reports.
+- **NumPy & Pandas** (`numpy`, `pandas`): Array operations, similarity matrix math, and evaluation dataset manipulation.
+- **Matplotlib** (`matplotlib`): Generation of static benchmark comparison charts in reports.
+- **NLTK** (`nltk`): WordNet lemmatizer and text normalization utilities.
+- **spaCy** (`spacy`): Named entity recognition (`en_core_web_sm`) for extracting people, places, and organizations.
+- **VADER Sentiment** (`vaderSentiment`): Rule-based sentiment analysis for tone classification.
+- **KeyBERT** (`keybert`): Embedding-based keyword and keyphrase extraction.
+- **langdetect** (`langdetect`): Probabilistic language identification for international text.
+- **deep-translator** (`deep-translator`): Free machine translation fallback library.
+""")
+
+    st.divider()
+
+    # 4. Existing sections below the concepts
+    st.markdown("#### 🔬 How We Read Your Text (Preprocessing Inspection)")
     prep = st.session_state.get("prep_result")
     if prep:
         st.write(f"**Scanned document:** `{prep.get('raw_word_count')} words` raw | `{prep.get('cleaned_word_count')} words` cleaned | `{prep.get('sentence_count')} sentences` | `{prep.get('unique_lemmas')} unique lemmas`")
@@ -2366,8 +2483,7 @@ def _tab_report(settings):
 
     st.divider()
 
-    # Section CO2 & CO3: Real Evaluation Benchmarks
-    st.markdown("#### CO2 & CO3: Algorithm Benchmark Evaluation")
+    st.markdown("#### 📊 Algorithm Benchmark Evaluation")
     st.warning("⚠️ **Evaluation Notice:** Similarity thresholds were chosen by inspection on a small dataset; results are optimistic.")
     eval_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports", "evaluation.json")
     if os.path.exists(eval_path):
@@ -2405,10 +2521,74 @@ def _tab_report(settings):
                 })
             st.dataframe(rows, use_container_width=True)
 
-            if not has_google_key:
-                st.info("ℹ️ **Translation Provider Status:** `GOOGLE_TRANSLATE_API_KEY` is not set — cross-lingual checks and evaluation use the **fallback translator**.")
-            else:
+            has_gemini_key = bool(os.getenv("GEMINI_API_KEY", "").strip())
+            if has_google_key:
                 st.info("ℹ️ **Translation Provider Status:** `GOOGLE_TRANSLATE_API_KEY` is configured — cross-lingual translation via **Google Cloud Translation**.")
+            elif has_gemini_key:
+                st.info("ℹ️ **Translation Provider Status:** `GOOGLE_TRANSLATE_API_KEY` is not set — cross-lingual translation via **Gemini AI Translation**.")
+            else:
+                st.info("ℹ️ **Translation Provider Status:** No cloud translation keys set — cross-lingual checks use the **fallback translator**.")
+
+            # Sentiment Benchmark
+            s_bench = eval_data.get("sentiment_benchmark", {})
+            if s_bench:
+                st.markdown("##### Sentiment Analysis Benchmark (20 Labeled Sentences)")
+                s_acc = s_bench.get("overall_accuracy", 0.8) * 100
+                st.write(f"**Overall Accuracy:** **{s_acc:.1f}%** ({int(round(s_acc*0.2))}/20 sentences correctly classified).")
+
+            # Information Extraction Benchmark
+            ie_bench = eval_data.get("information_extraction_benchmark", {})
+            if ie_bench:
+                st.markdown("##### Information Extraction Benchmark (22 Sentences: English, Hindi, Marathi, Negatives)")
+                ne_stats = ie_bench.get("named_entities", {})
+                cit_stats = ie_bench.get("citations", {})
+                cats = ne_stats.get("by_category", {})
+
+                ie_rows = [
+                    {
+                        "Task / Category": "Named Entities (Overall)",
+                        "Evaluated": f"{ie_bench.get('total_samples', 22)} sentences",
+                        "Precision": f"{ne_stats.get('precision', 0)*100:.1f}%",
+                        "Recall": f"{ne_stats.get('recall', 0)*100:.1f}%",
+                        "F1-Score": f"{ne_stats.get('f1', 0):.3f}"
+                    },
+                    {
+                        "Task / Category": "  • People (PERSON)",
+                        "Evaluated": f"{cats.get('people', {}).get('tp', 0) + cats.get('people', {}).get('fn', 0)} true entities",
+                        "Precision": f"{cats.get('people', {}).get('precision', 0)*100:.1f}%",
+                        "Recall": f"{cats.get('people', {}).get('recall', 0)*100:.1f}%",
+                        "F1-Score": f"{cats.get('people', {}).get('f1', 0):.3f}"
+                    },
+                    {
+                        "Task / Category": "  • Organizations (ORG)",
+                        "Evaluated": f"{cats.get('organizations', {}).get('tp', 0) + cats.get('organizations', {}).get('fn', 0)} true entities",
+                        "Precision": f"{cats.get('organizations', {}).get('precision', 0)*100:.1f}%",
+                        "Recall": f"{cats.get('organizations', {}).get('recall', 0)*100:.1f}%",
+                        "F1-Score": f"{cats.get('organizations', {}).get('f1', 0):.3f}"
+                    },
+                    {
+                        "Task / Category": "  • Places (GPE/LOC)",
+                        "Evaluated": f"{cats.get('places', {}).get('tp', 0) + cats.get('places', {}).get('fn', 0)} true entities",
+                        "Precision": f"{cats.get('places', {}).get('precision', 0)*100:.1f}%",
+                        "Recall": f"{cats.get('places', {}).get('recall', 0)*100:.1f}%",
+                        "F1-Score": f"{cats.get('places', {}).get('f1', 0):.3f}"
+                    },
+                    {
+                        "Task / Category": "  • Dates (DATE)",
+                        "Evaluated": f"{cats.get('dates', {}).get('tp', 0) + cats.get('dates', {}).get('fn', 0)} true entities",
+                        "Precision": f"{cats.get('dates', {}).get('precision', 0)*100:.1f}%",
+                        "Recall": f"{cats.get('dates', {}).get('recall', 0)*100:.1f}%",
+                        "F1-Score": f"{cats.get('dates', {}).get('f1', 0):.3f}"
+                    },
+                    {
+                        "Task / Category": "Citations & References (Bracket, Author-Year, DOI, URL)",
+                        "Evaluated": f"{ie_bench.get('total_samples', 22)} sentences",
+                        "Precision": f"{cit_stats.get('precision', 0)*100:.1f}%",
+                        "Recall": f"{cit_stats.get('recall', 0)*100:.1f}%",
+                        "F1-Score": f"{cit_stats.get('f1', 0):.3f}"
+                    }
+                ]
+                st.dataframe(ie_rows, use_container_width=True)
 
             if eval_data.get("limitations"):
                 with st.expander("ℹ️ Benchmark Methodology & Provider Notes", expanded=False):
@@ -2423,20 +2603,27 @@ def _tab_report(settings):
 
     st.divider()
 
-    # Section: Two-document Comparison Tool
-    st.markdown("#### Offline Document Comparison Tool")
+    st.markdown("#### ⚠️ Known Limitations")
+    st.markdown("""
+- **Paraphrase Boundaries:** Heavily modified text without shared distinctive words or neighboring matched context is classified as topical similarity rather than flagged plagiarism to prevent false accusations.
+- **Web Coverage:** Real-time online scanning relies on search queries and candidate page accessibility; paywalled or JavaScript-blocked pages cannot be evaluated.
+- **Multilingual Support:** Deep grammatical and semantic matching is optimized for English, Hindi, and Marathi; other languages rely on automated machine translation before comparison.
+- **Heuristic Fallbacks:** When offline or without API keys, rule-based dictionary and template fallbacks maintain system availability with reduced linguistic nuance.
+""")
+
+    st.divider()
+
+    st.markdown("#### 📁 Offline Document Comparison Tool")
     _compare_tab(settings)
 
     st.divider()
 
-    # Section: Scan History
-    st.markdown("#### Database Scan History")
+    st.markdown("#### 📜 Database Scan History")
     _history_tab()
 
     st.divider()
 
-    # Section: Export PDF Report
-    st.markdown("#### Download PDF Report")
+    st.markdown("#### 📄 Download PDF Report")
     if "scan_result" in st.session_state:
         pdf_bytes = generate_pdf_report(st.session_state["scan_result"])
         st.download_button(
@@ -2450,8 +2637,7 @@ def _tab_report(settings):
 
     st.divider()
 
-    # Section: Developer Settings & Search Diagnostics
-    with st.expander("⚙️ Advanced Pipeline Settings & Search Diagnostics (Examiner / Developer)", expanded=False):
+    with st.expander("⚙️ Advanced settings and search diagnostics", expanded=False):
         st.markdown("##### Pipeline Configuration")
         labels = {"auto": "Auto (first configured: Brave, then Tavily)", "brave": "Brave Search API",
                   "tavily": "Tavily Search API", "ddgs": "DuckDuckGo via ddgs (unofficial)"}
@@ -2482,7 +2668,7 @@ def main():
 
     _render_sidebar()
     settings = _get_settings()
-    tabs = st.tabs(["Check", "Results", "Fix it for me", "Project Report"])
+    tabs = st.tabs(["Check", "Results", "Fix it for me", "About the Project"])
     with tabs[0]:
         _tab_check(settings)
     with tabs[1]:

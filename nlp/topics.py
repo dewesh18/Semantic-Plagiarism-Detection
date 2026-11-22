@@ -1,5 +1,5 @@
 """
-Topic Modeling Module for PlagiarismAI (CO3).
+Topic Modeling Module for PlagiarismAI.
 Provides:
 - Latent Dirichlet Allocation (LDA) using scikit-learn.
 - Topic inference for uploaded documents against a reference corpus.

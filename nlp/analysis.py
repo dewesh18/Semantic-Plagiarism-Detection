@@ -1,5 +1,5 @@
 """
-Sentiment Analysis and Information Extraction Module (CO2).
+Sentiment Analysis and Information Extraction Module.
 Provides:
 - Sentiment / Tone analysis with confidence (overall and per-paragraph).
 - Named Entity Recognition (spaCy with fallback).

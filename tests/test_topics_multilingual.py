@@ -1,5 +1,5 @@
 """
-Unit tests for CO3 Topic Modeling and Multilingual NLP (nlp/topics.py, nlp/multilingual.py).
+Unit tests for Topic Modeling and Multilingual NLP (nlp/topics.py, nlp/multilingual.py).
 """
 
 import unittest
@@ -81,12 +81,33 @@ class TestMultilingual(unittest.TestCase):
             self.assertEqual(res["translated_text"], "Machine learning is a subfield of AI.")
             self.assertEqual(res["provider"], "Google Cloud Translation API")
 
+    @patch("google.genai.Client")
+    def test_translate_gemini_client_mock(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.text = "Natural language processing is a branch of artificial intelligence."
+        mock_client.models.generate_content.return_value = mock_resp
+        mock_client_cls.return_value = mock_client
+
+        from nlp.multilingual import _translate_gemini
+        out = _translate_gemini("प्राकृतिक भाषा प्रसंस्करण कंप्यूटर विज्ञान की एक शाखा है।", "hi", "fake-key")
+        self.assertEqual(out, "Natural language processing is a branch of artificial intelligence.")
+
+    @patch("nlp.multilingual._translate_gemini")
+    def test_translate_gemini_provider_precedence(self, mock_gemini):
+        mock_gemini.return_value = "Artificial intelligence enables automated reasoning."
+        with patch.dict("os.environ", {"GOOGLE_TRANSLATE_API_KEY": "", "GEMINI_API_KEY": "fake-gemini-key"}):
+            res = translate_text("कृत्रिम बुद्धिमत्ता स्वयंचलित तर्क सक्षम करते.", "mr", use_cache=False)
+            self.assertEqual(res["translated_text"], "Artificial intelligence enables automated reasoning.")
+            self.assertEqual(res["provider"], "Gemini AI Translation")
+
     def test_translate_offline_fallback_does_not_crash(self):
         # With no API key and mocked deep_translator, returns string without error
-        with patch.dict("os.environ", {"GOOGLE_TRANSLATE_API_KEY": ""}):
-            res = translate_text("नमस्ते जग", "hi")
+        with patch.dict("os.environ", {"GOOGLE_TRANSLATE_API_KEY": "", "GEMINI_API_KEY": ""}):
+            res = translate_text("नमस्ते जग", "hi", use_cache=False)
             self.assertTrue(len(res["translated_text"]) > 0)
             self.assertIn("provider", res)
+            self.assertEqual(res["provider"], "fallback translator")
 
 
 if __name__ == "__main__":

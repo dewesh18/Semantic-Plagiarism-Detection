@@ -1,5 +1,5 @@
 """
-Unit tests for CO2 Analysis and Information Extraction (nlp/analysis.py).
+Unit tests for Analysis and Information Extraction (nlp/analysis.py).
 """
 
 import unittest

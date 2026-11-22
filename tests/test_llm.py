@@ -1,5 +1,5 @@
 """
-Unit tests for CO4 LLM Assistant and Prompts (llm/prompts.py, llm/assistant.py).
+Unit tests for LLM Assistant and Prompts (llm/prompts.py, llm/assistant.py).
 """
 
 import json

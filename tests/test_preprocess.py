@@ -1,5 +1,5 @@
 """
-Unit tests for CO1 Preprocessing and Vectorization (nlp/preprocess.py).
+Unit tests for Preprocessing and Vectorization (nlp/preprocess.py).
 """
 
 import unittest

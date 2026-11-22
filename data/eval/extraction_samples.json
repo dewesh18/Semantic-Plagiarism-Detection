@@ -1,0 +1,266 @@
+[
+  {
+    "id": 1,
+    "text": "According to research conducted at Stanford University by Geoffrey Hinton in 2018, deep neural networks exhibit emergent capabilities (Hinton et al., 2018).",
+    "language": "en",
+    "entities": {
+      "people": ["Geoffrey Hinton"],
+      "organizations": ["Stanford University"],
+      "places": [],
+      "dates": ["2018"]
+    },
+    "citations": ["(Hinton et al., 2018)"]
+  },
+  {
+    "id": 2,
+    "text": "Attention mechanisms revolutionized sequence modeling across computational linguistics [1], as documented in https://doi.org/10.1145/3308558.",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": ["[1]", "10.1145/3308558", "https://doi.org/10.1145/3308558"]
+  },
+  {
+    "id": 3,
+    "text": "Marie Curie conducted pioneering radioactivity research in Paris between 1898 and 1906.",
+    "language": "en",
+    "entities": {
+      "people": ["Marie Curie"],
+      "organizations": [],
+      "places": ["Paris"],
+      "dates": ["1898", "1906"]
+    },
+    "citations": []
+  },
+  {
+    "id": 4,
+    "text": "Microsoft and OpenAI announced a multi-billion dollar partnership on January 23, 2023.",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": ["Microsoft", "OpenAI"],
+      "places": [],
+      "dates": ["January 23, 2023"]
+    },
+    "citations": []
+  },
+  {
+    "id": 5,
+    "text": "The fundamental laws of thermodynamics govern heat transfer and entropy generation in closed systems.",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": []
+  },
+  {
+    "id": 6,
+    "text": "Recursive algorithms frequently exhibit exponential time complexity unless memoization techniques are applied.",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": []
+  },
+  {
+    "id": 7,
+    "text": "Recent advancements in transformer architectures have improved benchmark performance across multiple translation tasks [3, 4].",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": ["[3, 4]"]
+  },
+  {
+    "id": 8,
+    "text": "Dr. Sundar Pichai delivered the keynote address at Google headquarters in Mountain View on May 10, 2023, available at https://blog.google/io2023.",
+    "language": "en",
+    "entities": {
+      "people": ["Sundar Pichai"],
+      "organizations": ["Google"],
+      "places": ["Mountain View"],
+      "dates": ["May 10, 2023"]
+    },
+    "citations": ["https://blog.google/io2023"]
+  },
+  {
+    "id": 9,
+    "text": "Behavioral economics demonstrates that cognitive biases systematically skew decision-making under uncertainty (Kahneman & Tversky, 1979).",
+    "language": "en",
+    "entities": {
+      "people": ["Kahneman", "Tversky"],
+      "organizations": [],
+      "places": [],
+      "dates": ["1979"]
+    },
+    "citations": ["(Kahneman & Tversky, 1979)"]
+  },
+  {
+    "id": 10,
+    "text": "Alan Turing introduced the concept of universal computing machines in 1936.",
+    "language": "en",
+    "entities": {
+      "people": ["Alan Turing"],
+      "organizations": [],
+      "places": [],
+      "dates": ["1936"]
+    },
+    "citations": []
+  },
+  {
+    "id": 11,
+    "text": "The World Health Organization coordinated global pandemic response initiatives from Geneva.",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": ["World Health Organization"],
+      "places": ["Geneva"],
+      "dates": []
+    },
+    "citations": []
+  },
+  {
+    "id": 12,
+    "text": "Quantum supremacy experiments demonstrated quadratic speedups over classical supercomputers (doi: 10.1038/s41586-019-1666-5).",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": ["10.1038/s41586-019-1666-5"]
+  },
+  {
+    "id": 13,
+    "text": "Photosynthesis converts light energy into chemical energy stored in carbohydrate molecules.",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": []
+  },
+  {
+    "id": 14,
+    "text": "Sorting large arrays using quicksort achieves an average time complexity of O(n log n).",
+    "language": "en",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": []
+  },
+  {
+    "id": 15,
+    "text": "डॉ. एपीजे अब्दुल कलाम ने भारत के राष्ट्रपति के रूप में 2002 से 2007 तक नई दिल्ली में सेवा की।",
+    "language": "hi",
+    "entities": {
+      "people": ["एपीजे अब्दुल कलाम"],
+      "organizations": [],
+      "places": ["नई दिल्ली", "भारत"],
+      "dates": ["2002", "2007"]
+    },
+    "citations": []
+  },
+  {
+    "id": 16,
+    "text": "भारतीय अंतरिक्ष अनुसंधान संगठन (इसरो) ने 23 अगस्त 2023 को चंद्रयान-3 मिशन सफलतापूर्वक पूरा किया।",
+    "language": "hi",
+    "entities": {
+      "people": [],
+      "organizations": ["भारतीय अंतरिक्ष अनुसंधान संगठन", "इसरो"],
+      "places": [],
+      "dates": ["23 अगस्त 2023"]
+    },
+    "citations": []
+  },
+  {
+    "id": 17,
+    "text": "प्रकृति का संतुलन बनाए रखने के लिए वृक्षारोपण और जल संरक्षण अत्यंत आवश्यक हैं।",
+    "language": "hi",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": []
+  },
+  {
+    "id": 18,
+    "text": "छत्रपती शिवाजी महाराज यांनी १६७४ मध्ये रायगड येथे हिंदवी स्वराज्याची स्थापना केली.",
+    "language": "mr",
+    "entities": {
+      "people": ["छत्रपती शिवाजी महाराज"],
+      "organizations": [],
+      "places": ["रायगड"],
+      "dates": ["१६७४"]
+    },
+    "citations": []
+  },
+  {
+    "id": 19,
+    "text": "पुणे विद्यापीठ आणि राष्ट्रीय रासायनिक प्रयोगशाळा यांनी संयुक्त संशोधन प्रकल्प सुरू केला.",
+    "language": "mr",
+    "entities": {
+      "people": [],
+      "organizations": ["पुणे विद्यापीठ", "राष्ट्रीय रासायनिक प्रयोगशाळा"],
+      "places": ["पुणे"],
+      "dates": []
+    },
+    "citations": []
+  },
+  {
+    "id": 20,
+    "text": "परिश्रम आणि सातत्य ही यशाची गुरुकिल्ली मानली जाते.",
+    "language": "mr",
+    "entities": {
+      "people": [],
+      "organizations": [],
+      "places": [],
+      "dates": []
+    },
+    "citations": []
+  },
+  {
+    "id": 21,
+    "text": "Prior studies evaluated syntactic parsing performance under noisy OCR environments [12] (Smith, 2015).",
+    "language": "en",
+    "entities": {
+      "people": ["Smith"],
+      "organizations": [],
+      "places": [],
+      "dates": ["2015"]
+    },
+    "citations": ["[12]", "(Smith, 2015)"]
+  },
+  {
+    "id": 22,
+    "text": "Tim Berners-Lee invented the World Wide Web at CERN in Geneva in 1989.",
+    "language": "en",
+    "entities": {
+      "people": ["Tim Berners-Lee"],
+      "organizations": ["CERN"],
+      "places": ["Geneva"],
+      "dates": ["1989"]
+    },
+    "citations": []
+  }
+]

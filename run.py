@@ -6,7 +6,7 @@ benchmarks, or executing the complete unit test suite.
 
 Usage:
   python run.py              # Launch the Streamlit application
-  python run.py --evaluate   # Run CO1-CO3 benchmark and generate evaluation.json + figures
+  python run.py --evaluate   # Run benchmark and generate evaluation.json + figures
   python run.py --test       # Run all unit tests
 """
 
@@ -25,7 +25,7 @@ def run_app():
 
 
 def run_evaluate():
-    print("[*] Running PlagiarismAI Rubric Benchmark (CO1, CO2, CO3)...")
+    print("[*] Running PlagiarismAI Benchmark Evaluation...")
     cmd = [sys.executable, "evaluate.py"]
     subprocess.run(cmd)
 

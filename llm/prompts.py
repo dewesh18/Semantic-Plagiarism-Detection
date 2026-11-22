@@ -1,5 +1,5 @@
 """
-Prompt Engineering Templates for LLM Assistant (CO4).
+Prompt Engineering Templates for LLM Assistant.
 Designed with:
 1. Role instruction (Senior Academic Writing Coach & Integrity Advisor).
 2. Prompt-injection defense: User passage placed inside strict delimiters, instructed to treat as untrusted data.

@@ -113,11 +113,73 @@ class TestUISmoke(unittest.TestCase):
             at.run()
             self.assertEqual(len(at.exception), 0, f"Exception rendering {sample_file}: {[e.value for e in at.exception]}")
 
-            # Verify that Results, Fix, and Project Report rendered their elements
-            all_text = [m.value for m in at.markdown] + [s.value for s in at.success] + [w.value for w in at.warning] + [e.value for e in at.error]
+            # Verify that Results, Fix, and About the Project rendered their elements
+            all_text = [m.value for m in at.markdown] + [h.value for h in at.header] + [s.value for s in at.success] + [w.value for w in at.warning] + [e.value for e in at.error]
             self.assertTrue(any("Originality Score" in t for t in all_text), f"Results tab originality missing for {sample_file}")
-            self.assertTrue(any("Project Demonstration Rubric" in t for t in all_text), f"Project Report rubric missing for {sample_file}")
+            self.assertTrue(any("About this project" in t for t in all_text), f"About the Project tab heading missing for {sample_file}")
             self.assertTrue(any("Tone of Your Writing" in t for t in all_text), f"Tone section missing for {sample_file}")
+
+    def test_about_the_project_tab_without_scan(self):
+        """Verify the About the Project tab renders all concepts and fallbacks cleanly with no scan."""
+        at = AppTest.from_file(APP_PATH, default_timeout=30)
+        at.run()
+        self.assertEqual(len(at.exception), 0, f"Exceptions on clean launch: {[e.value for e in at.exception]}")
+
+        headers = [h.value for h in at.header]
+        self.assertTrue(any("About this project" in h for h in headers))
+
+        all_md = [m.value for m in at.markdown]
+        all_expanders = [e.label for e in at.expander]
+        all_content = all_md + all_expanders
+
+        self.assertTrue(any("How it works" in m for m in all_md))
+        self.assertTrue(any("Text Preparation" in c for c in all_content))
+        self.assertTrue(any("Turning Text into Numbers" in c for c in all_content))
+        self.assertTrue(any("Finding Copied Text" in c for c in all_content))
+        self.assertTrue(any("Understanding the Writing" in c for c in all_content))
+        self.assertTrue(any("Multilingual NLP" in c for c in all_content))
+        self.assertTrue(any("Generative AI" in c for c in all_content))
+        self.assertTrue(any("Evaluation & Benchmarks" in c for c in all_content))
+        self.assertTrue(any("Libraries and Tools Used" in m for m in all_md))
+        self.assertTrue(any("Known Limitations" in m for m in all_md))
+
+        # Check empty state info for preprocessing
+        info_texts = [i.value for i in at.info]
+        self.assertTrue(any("Run a scan in the" in i for i in info_texts))
+
+    def test_about_the_project_tab_with_scan(self):
+        """Verify the About the Project tab renders document inspection and download button when scan exists."""
+        at = AppTest.from_file(APP_PATH, default_timeout=30)
+        at.session_state["scan_result"] = {
+            "document_name": "sample.txt",
+            "scanned_at": "2026-11-22 12:00:00",
+            "status": "matches",
+            "pipeline": {
+                "queries_ok": 2, "queries_planned": 2, "results_retrieved": 4,
+                "pages_downloaded": 2, "pages_compared": 2, "sources_with_matches": 1
+            },
+            "stats": {"overall_pct": 25.0, "total_sentences": 4},
+            "sources": [], "sentences": [], "matches": []
+        }
+        at.session_state["prep_result"] = {
+            "raw_word_count": 50,
+            "cleaned_word_count": 30,
+            "sentence_count": 4,
+            "unique_lemmas": 25,
+            "original_text": "Sample raw text before cleaning.",
+            "cleaned_text": "sample raw text before clean"
+        }
+        at.run()
+        self.assertEqual(len(at.exception), 0, f"Exceptions with scan present: {[e.value for e in at.exception]}")
+
+        # Preprocessing text areas should be present
+        text_areas = [ta.value for ta in at.text_area]
+        self.assertTrue(any("Sample raw text before cleaning" in v for v in text_areas))
+        self.assertTrue(any("sample raw text before clean" in v for v in text_areas))
+
+        # Download button should be present
+        download_labels = [b.label for b in at.download_button]
+        self.assertTrue(any("Download Official PDF Report" in l for l in download_labels))
 
 
 if __name__ == "__main__":

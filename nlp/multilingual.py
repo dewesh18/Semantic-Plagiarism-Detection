@@ -1,5 +1,5 @@
 """
-Multilingual NLP and Cloud AI Translation Module (CO3).
+Multilingual NLP and Cloud AI Translation Module.
 Provides:
 - Language identification for English, Hindi, and Marathi (langdetect + Devanagari script rules).
 - Cloud AI Service: Google Cloud Translation API via REST using GOOGLE_TRANSLATE_API_KEY from .env.
@@ -150,14 +150,43 @@ def _translate_deep_translator(text: str, source_lang: str) -> Optional[str]:
         return None
 
 
+def _translate_gemini(text: str, source_lang: str, api_key: str, model_name: Optional[str] = None) -> Optional[str]:
+    """
+    Translates non-English text to English using official Google Gen AI SDK (Gemini).
+    """
+    try:
+        from google import genai
+        from google.genai import types
+        model = model_name or os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        client = genai.Client(api_key=api_key)
+        lang_str = "Hindi" if source_lang == "hi" else ("Marathi" if source_lang == "mr" else source_lang)
+        prompt = (
+            f"Translate the following {lang_str} text into natural, accurate academic English. "
+            f"Preserve technical terminology, numbers, and formatting. Output ONLY the English translation without any conversational prefixes, quotes, or markdown notes.\n\n"
+            f"Text to translate:\n{text}"
+        )
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+            )
+        )
+        if response and response.text:
+            return response.text.strip()
+    except Exception:
+        return None
+    return None
+
+
 def translate_text(text: str, source_lang_code: str = "auto", use_cache: bool = True) -> Dict[str, Any]:
     """
     Translates non-English text to English.
-    Tries:
+    Cascade order:
     1. Local persistent translation cache (if use_cache is True)
-    2. Google Cloud Translation API (if GOOGLE_TRANSLATE_API_KEY in .env / os.environ)
-    3. deep-translator library
-    4. Safe offline fallback (preserves original text)
+    2. Google Cloud Translation API (only if GOOGLE_TRANSLATE_API_KEY in .env / os.environ)
+    3. Gemini AI Translation (if GEMINI_API_KEY in .env / os.environ)
+    4. Fallback translator (deep-translator or local offline engine)
     """
     if not text or not text.strip():
         return {
@@ -183,13 +212,14 @@ def translate_text(text: str, source_lang_code: str = "auto", use_cache: bool = 
     # Chunk text if long to respect API constraints (up to 1500 chars per chunk)
     chunks = [text[i:i + 1400] for i in range(0, len(text), 1400)]
     translated_chunks = []
-    provider_used = "Fallback Offline"
+    provider_used = "fallback translator"
 
     google_api_key = os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip()
+    gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
 
     for chunk in chunks:
         chunk_translated = None
-        # 1. Google Cloud Translation REST API
+        # 1. Google Cloud Translation REST API (only if key is set)
         if google_api_key:
             try:
                 chunk_translated = _translate_google_cloud_rest(chunk, source_lang_code, google_api_key)
@@ -198,19 +228,28 @@ def translate_text(text: str, source_lang_code: str = "auto", use_cache: bool = 
             except Exception:
                 chunk_translated = None
 
-        # 2. deep-translator fallback
+        # 2. Gemini AI Translation (if GEMINI_API_KEY is set)
+        if not chunk_translated and gemini_api_key:
+            try:
+                chunk_translated = _translate_gemini(chunk, source_lang_code, gemini_api_key)
+                if chunk_translated:
+                    provider_used = "Gemini AI Translation"
+            except Exception:
+                chunk_translated = None
+
+        # 3. Fallback translator (deep-translator)
         if not chunk_translated:
             try:
                 chunk_translated = _translate_deep_translator(chunk, source_lang_code)
                 if chunk_translated:
-                    provider_used = "Deep-Translator Fallback"
+                    provider_used = "fallback translator"
             except Exception:
                 chunk_translated = None
 
-        # 3. Safe fallback (if offline / no key)
+        # 4. Safe offline fallback (preserves original text)
         if not chunk_translated:
             chunk_translated = chunk
-            provider_used = "Offline Text Engine (No API Key)"
+            provider_used = "fallback translator"
 
         translated_chunks.append(chunk_translated)
 
