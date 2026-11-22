@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 
 from llm.prompts import SYSTEM_ROLE_INSTRUCTION, build_fix_prompt
 
-DEFAULT_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+DEFAULT_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 # In-memory session cache for instant repeat clicks
 _FIX_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -42,6 +42,7 @@ def verify_gemini_model_at_startup() -> Dict[str, Any]:
 
     # Known current valid Gemini models on Google Gen AI SDK
     known_models = {
+        "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash",
         "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite",
         "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-pro-exp"
     }

@@ -185,6 +185,20 @@ propose proposed present presented approach method methods""".split())
 NOT_FOUND_MESSAGE = ("Web search could not be completed. "
                      "No reliable plagiarism conclusion can be generated.")
 
+HTML_LIMIT = 3_000_000
+PDF_LIMIT = 20_000_000
+
+REQUEST_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+    "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+ALT_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0"),
+    "Accept": "*/*",
+}
+
 
 # --------------------------------------------------------------------------
 # 1. Model
@@ -1339,17 +1353,70 @@ def _render_sidebar():
     st.sidebar.markdown("### 🔍 PlagiarismAI")
     st.sidebar.caption("An originality checker and writing assistant for essays and academic work.")
 
+    with st.sidebar.expander("⚙️ Settings (optional)", expanded=False):
+        st.slider("How strict should matching be?", min_value=50, max_value=95, value=70, key="sb_sem_thresh")
+        st.slider("Exact copy strictness", min_value=80, max_value=99, value=90, key="sb_near_thresh")
+        st.slider("Number of web searches", min_value=1, max_value=15, value=8, key="sb_queries")
+        st.slider("Pages to read", min_value=1, max_value=30, value=12, key="sb_max_pages")
+
 
 def _get_settings():
+    sem_thresh = st.session_state.get("sb_sem_thresh", st.session_state.get("adv_sem_thresh", 70))
+    near_thresh = st.session_state.get("sb_near_thresh", st.session_state.get("adv_near_thresh", 90))
+    queries = st.session_state.get("sb_queries", st.session_state.get("adv_queries", 8))
+    pages = st.session_state.get("sb_max_pages", st.session_state.get("adv_max_pages", 12))
+
+    t_key, _ = get_secret("TAVILY_API_KEY")
+    b_key, _ = get_secret("BRAVE_API_KEY")
+    default_provider = "tavily" if t_key else ("brave" if b_key else "auto")
+    provider = st.session_state.get("adv_provider", default_provider)
+
     return {
-        "provider": st.session_state.get("adv_provider", "auto"),
-        "semantic_threshold": st.session_state.get("adv_sem_thresh", 70) / 100.0,
-        "near_threshold": st.session_state.get("adv_near_thresh", 90) / 100.0,
-        "max_queries": st.session_state.get("adv_queries", 8),
+        "provider": provider,
+        "semantic_threshold": sem_thresh / 100.0,
+        "near_threshold": near_thresh / 100.0,
+        "max_queries": queries,
         "results_per_query": st.session_state.get("adv_res_per_q", 5),
-        "max_pages": st.session_state.get("adv_max_pages", 12),
+        "max_pages": pages,
         "max_sentences": st.session_state.get("adv_max_sentences", 200),
     }
+
+
+def as_list(val, key=None):
+    """Safely extracts a list whether val is a list, dict, or None."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, dict):
+        if key and key in val:
+            sub = val[key]
+            if isinstance(sub, list):
+                return sub
+            elif sub is not None:
+                return [sub]
+        for candidate in ("items", "list", "keywords", "topics", "citations", "values"):
+            if candidate in val and isinstance(val[candidate], list):
+                return val[candidate]
+        collected = []
+        for v in val.values():
+            if isinstance(v, list):
+                collected.extend(v)
+            elif isinstance(v, str) and v:
+                collected.append(v)
+        return collected
+    return [val]
+
+
+def as_dict(val, key=None):
+    """Safely extracts a dict whether val is a dict, list, or None."""
+    if val is None:
+        return {}
+    if isinstance(val, dict):
+        if key and key in val and isinstance(val[key], dict):
+            return val[key]
+        return val
+    return {}
 
 
 def _load_sample_file(filename):
@@ -1391,6 +1458,15 @@ def _tab_check(settings):
             horizontal=True,
             key="check_mode_choice"
         )
+    with col_opt2:
+        tavily_key, _ = get_secret("TAVILY_API_KEY")
+        brave_key, _ = get_secret("BRAVE_API_KEY")
+        if tavily_key:
+            st.caption("🌐 **Web search is ready** (Tavily connected).")
+        elif brave_key:
+            st.caption("🌐 **Web search is ready** (Brave connected).")
+        else:
+            st.caption("ℹ️ **Web search is not set up** — using reference library.")
 
     if st.button("Check my document", type="primary", key="main_check_btn", use_container_width=True):
         try:
@@ -1434,16 +1510,22 @@ def _tab_check(settings):
 
             bar.progress(0.65, text="Comparing text against sources...")
             if "Live Web Search" in mode_choice:
+                if tavily_key:
+                    settings["provider"] = "tavily"
+                elif brave_key:
+                    settings["provider"] = "brave"
+
                 scan_res = run_scan(model, text_for_scan, name, settings,
                                     lambda f, m: bar.progress(min(0.65 + 0.30 * f, 0.95), text=m))
                 if scan_res.get("status") == "incomplete":
                     # Graceful fallback to reference library if web search is not configured or failed
-                    bar.progress(0.80, text="Web search provider not active; scanning reference library...")
+                    bar.progress(0.80, text="Web search provider unavailable; scanning reference library...")
                     scan_res = scan_against_reference_corpus(
                         model, text_for_scan, name,
                         semantic_threshold=settings["semantic_threshold"],
                         near_threshold=settings["near_threshold"]
                     )
+                    scan_res["fallback_to_library"] = True
             else:
                 scan_res = scan_against_reference_corpus(
                     model, text_for_scan, name,
@@ -1479,121 +1561,211 @@ def _tab_results():
         return
 
     result = _normalize_result(st.session_state["scan_result"])
-    stats = result["stats"]
-    nlp = st.session_state.get("nlp_analysis", {})
-    lang = nlp.get("language", {})
+    stats = as_dict(result.get("stats"))
+    nlp = as_dict(st.session_state.get("nlp_analysis"))
+
+    matches = [m for m in as_list(result.get("matches")) if m.get("type") in COUNTED_TYPES]
+    matched_sources = [s for s in as_list(result.get("sources")) if s.get("verified") and s.get("matches", 0) > 0]
 
     st.subheader(f"Results for: {result.get('document_name', 'Document')}")
     st.caption(f"Checked on {result.get('scanned_at', '')}")
 
-    # 1. Originality Score Header
+    # Notice if live web search fell back to local library
+    if result.get("fallback_to_library"):
+        st.warning("⚠️ **Live Web Search Notice:** Live web search could not complete (network, provider or quota limit). The document was compared against the verified reference library instead.")
+
+    # (h) Short summary line at the top
+    if matches:
+        st.markdown(f"### 📋 Summary: **{len(matches)} copied parts** found from **{len(matched_sources)} verified sources**.")
+    else:
+        st.markdown("### 📋 Summary: **No copied parts found** — your text shows strong independent writing.")
+
+    # (a) Big originality score (green/yellow/red) with one plain sentence
     overall_pct = stats.get("overall_pct", 0.0)
     originality = max(0.0, round(100.0 - overall_pct, 1))
 
     if originality >= 80.0:
-        st.success(f"### 🟢 Originality Score: {originality}%\n**High Originality** — Your document shows strong independent writing with minimal similarity to existing sources.")
+        st.success(f"## 🟢 Originality Score: {originality}%\nYour document is predominantly original with minimal similarity to checked literature.")
     elif originality >= 50.0:
-        st.warning(f"### 🟡 Originality Score: {originality}%\n**Moderate Originality** — Some passages in your document resemble existing sources and should be reviewed or cited.")
+        st.warning(f"## 🟡 Originality Score: {originality}%\nYour document shows moderate similarity to existing literature; consider reviewing flagged passages.")
     else:
-        st.error(f"### 🔴 Originality Score: {originality}%\n**Low Originality** — Significant portions of your document match existing literature. Use the 'Fix it for me' tab to rephrase.")
+        st.error(f"## 🔴 Originality Score: {originality}%\nYour document contains substantial overlap with existing literature; citations or rewrites are recommended.")
 
-    # Language Badge
-    lang_name = lang.get("language", "English")
-    if lang.get("is_multilingual"):
-        trans_info = nlp.get("translation") or {}
-        prov = trans_info.get("provider", "")
+    # (b) Language badge showing the translation provider actually used
+    lang_info = as_dict(nlp.get("language"))
+    lang_name = lang_info.get("language", "English")
+    if lang_info.get("is_multilingual"):
+        trans_info = as_dict(nlp.get("translation"))
+        prov = trans_info.get("provider", "fallback translator")
         if "Google Cloud" in prov:
             prov_label = "Google Cloud Translation"
         else:
             prov_label = "fallback translator"
-        st.info(f"🌐 **Language Detected:** {lang_name} (Confidence: {int(lang.get('confidence', 0.8)*100)}%) — translated for comparison via **{prov_label}**.")
+        conf = int(lang_info.get("confidence", 0.8) * 100)
+        st.info(f"🌐 **Language Detected:** {lang_name} ({conf}% confidence) — translated to English for comparison via **{prov_label}**.")
     else:
-        st.caption(f"🌐 **Language:** {lang_name}")
+        st.caption(f"🌐 **Language:** {lang_name} (original)")
 
     st.divider()
 
-    # 2. Four Plain-Language Cards
-    col_left, col_right = st.columns(2)
-
-    with col_left:
-        # Card 1: Copied Parts
-        st.markdown("#### 1. Flagged Passages")
-        matches = [m for m in result.get("matches", []) if m["type"] in COUNTED_TYPES]
-        if not matches:
-            st.write("🎉 **No matching passages found!** Your text does not show significant overlap with checked sources.")
-        else:
-            st.write(f"Found **{len(matches)}** matching sentence(s) from sources:")
-            for idx, m in enumerate(matches[:5]):
-                score_desc = f"{int(m['score'])}% match"
-                match_kind = "Exact wording" if m["type"] == EXACT else ("Near-exact" if m["type"] == NEAR else "Similar meaning")
-                st.markdown(f"**Passage {idx+1}** ({score_desc} - {match_kind})")
-                st.markdown(f"> \"{m['sentence']}\"")
-                st.caption(f"Source: {m['title']}")
-                if st.button(f"Fix Passage {idx+1}", key=f"fix_match_{idx}"):
-                    st.session_state["fix_target_sentence"] = m["sentence"]
-                    st.session_state["fix_target_source"] = m["title"]
-                    st.info("Passage selected! Please switch to the **Fix it for me** tab above to see suggested rewrites and citations.")
-                st.write("")
-
-        # Card 2: Tone of Your Writing
-        st.markdown("#### 2. Tone of Your Writing")
-        sentiment = nlp.get("sentiment", {})
-        tone_label = sentiment.get("label", "Neutral")
-        tone_conf = sentiment.get("confidence", 0.85)
-        st.markdown(f"**Tone:** `{tone_label}` (Confidence: {int(tone_conf*100)}%)")
-        if tone_label == "Neutral":
-            st.write("Your document maintains a balanced, objective academic tone suitable for research writing.")
-        elif tone_label == "Positive":
-            st.write("Your document adopts an encouraging and constructive tone.")
-        else:
-            st.write("Your document adopts a critical or cautious tone.")
-
-        with st.expander("View paragraph tone details"):
-            para_tones = sentiment.get("paragraph_sentiments", [])
-            if para_tones:
-                for p in para_tones:
-                    st.markdown(f"- Paragraph {p['paragraph_index']}: **{p['label']}** ({p['text_preview']})")
+    # (c) Copied parts
+    st.markdown("#### 1. Copied Parts")
+    if not matches:
+        st.info("🎉 **No copied parts found!** None of your sentences exceeded similarity thresholds against reference materials.")
+    else:
+        for idx, m in enumerate(matches):
+            score_pct = int(round(m.get("score", 0.0)))
+            m_type = m.get("type", "")
+            if m_type == EXACT:
+                kind = "Exact copy"
+            elif m_type == NEAR:
+                kind = "Reworded"
             else:
-                st.write("Single paragraph analyzed.")
+                kind = "Similar meaning"
+            title = m.get("title", "Reference Source")
+            url = m.get("url", "")
 
-    with col_right:
-        # Card 3: What Your Document Is About
-        st.markdown("#### 3. What Your Document Is About")
-        topics = nlp.get("topics", {}).get("topics", [])
-        if topics:
-            for t in topics:
-                st.markdown(f"- **{t['label']}**: {', '.join(t['top_words'][:5])}")
-        else:
-            st.write("Topic themes were not generated.")
+            st.markdown(f"**Passage {idx + 1}** — `{kind}` ({score_pct}% similarity)")
+            st.markdown(f"> \"{m.get('sentence', '')}\"")
+            if url and url.startswith("http"):
+                st.markdown(f"Source: [{title}]({url})")
+            else:
+                st.caption(f"Source: {title}")
 
-        # Card 4: Key Details Found
-        st.markdown("#### 4. Key Details Found")
-        entities = nlp.get("entities", {})
-        keywords = nlp.get("keywords", {}).get("keywords", [])
-        citations = nlp.get("citations", {}).get("citations", [])
-
-        if entities.get("people"):
-            st.write(f"**People & Researchers:** {', '.join(entities['people'][:6])}")
-        if entities.get("organizations"):
-            st.write(f"**Organizations & Projects:** {', '.join(entities['organizations'][:6])}")
-        if entities.get("places"):
-            st.write(f"**Places & Locations:** {', '.join(entities['places'][:4])}")
-        if keywords:
-            st.write(f"**Key Concepts:** {', '.join(keywords[:8])}")
-        if citations:
-            st.write(f"**Citations / References Identified:** {', '.join(citations[:5])}")
-        elif not (entities.get("people") or keywords):
-            st.write("Standard terminology identified.")
+            if st.button(f"Fix Passage {idx + 1}", key=f"btn_fix_part_{idx}"):
+                st.session_state["fix_target_sentence"] = m.get("sentence", "")
+                st.session_state["fix_target_source"] = title
+                st.session_state["fix_target_url"] = url
+                st.info(f"Passage {idx + 1} selected! Please switch to the **Fix it for me** tab above to see your rewrite.")
+            st.write("")
 
     st.divider()
 
-    # 3. Highlighted Text
-    st.markdown("### Document Text with Highlights")
+    # (d) Verified sources
+    st.markdown("#### 2. Verified Sources")
+    if not matched_sources:
+        st.info("No external sources matched your text.")
+    else:
+        for s in matched_sources:
+            title = s.get("title", "Source document")
+            url = s.get("url", "")
+            matches_count = s.get("matches", 0)
+            domain = urlparse(url).netloc if url and url.startswith("http") else "Local Reference Library"
+            if url and url.startswith("http"):
+                st.markdown(f"- 📄 **[{title}]({url})** (`{domain}`) — **{matches_count} matching sentence(s)** — [Open source ↗]({url})")
+            else:
+                st.markdown(f"- 📄 **{title}** (`{domain}`) — **{matches_count} matching sentence(s)**")
+
+    st.divider()
+
+    # (e) Tone of your writing
+    st.markdown("#### 3. Tone of Your Writing")
+    sentiment = as_dict(nlp.get("sentiment"))
+    tone_label = sentiment.get("label", "Neutral")
+    tone_conf = int(sentiment.get("confidence", 0.85) * 100)
+    st.markdown(f"**Overall Tone:** `{tone_label}` ({tone_conf}% confidence)")
+    if tone_label == "Neutral":
+        st.write("Your writing maintains an objective, balanced tone appropriate for academic papers.")
+    elif tone_label == "Positive":
+        st.write("Your writing is optimistic, constructive, and forward-looking.")
+    else:
+        st.write("Your writing takes a critical, analytical, or cautious perspective.")
+
+    para_tones = as_list(sentiment.get("paragraph_sentiments"))
+    if para_tones:
+        with st.expander("Paragraph-by-paragraph tone details", expanded=False):
+            for p in para_tones:
+                if isinstance(p, dict):
+                    st.markdown(f"- **Paragraph {p.get('paragraph_index', 1)}** (`{p.get('label', 'Neutral')}`): {p.get('text_preview', '')}")
+
+    st.divider()
+
+    # (f) What your document is about
+    st.markdown("#### 4. What Your Document Is About")
+    topics_data = nlp.get("topics")
+    topics_list = as_list(topics_data, "topics")
+    if topics_list:
+        topic_chips = []
+        for t in topics_list[:3]:
+            if isinstance(t, dict):
+                label = t.get("label", "Topic")
+                top_words = ", ".join(as_list(t.get("top_words"))[:4])
+                topic_chips.append(f"🏷️ **{label}** ({top_words})")
+            elif isinstance(t, str):
+                topic_chips.append(f"🏷️ **{t}**")
+        for chip in topic_chips:
+            st.markdown(f"- {chip}")
+    else:
+        st.info("No specific topic themes identified.")
+
+    st.divider()
+
+    # (g) Key details found
+    st.markdown("#### 5. Key Details Found")
+    entities = as_dict(nlp.get("entities"))
+    keywords = as_list(nlp.get("keywords"))
+    citations = as_list(nlp.get("citations"))
+
+    details_found = False
+    if entities.get("people"):
+        details_found = True
+        chips = [f"`{p}`" for p in as_list(entities["people"])[:6]]
+        st.markdown(f"**People & Researchers:** {' '.join(chips)}")
+    if entities.get("organizations"):
+        details_found = True
+        chips = [f"`{o}`" for o in as_list(entities["organizations"])[:6]]
+        st.markdown(f"**Organizations & Institutions:** {' '.join(chips)}")
+    if entities.get("places"):
+        details_found = True
+        chips = [f"`{loc}`" for loc in as_list(entities["places"])[:5]]
+        st.markdown(f"**Places & Locations:** {' '.join(chips)}")
+    if entities.get("dates"):
+        details_found = True
+        chips = [f"`{d}`" for d in as_list(entities["dates"])[:5]]
+        st.markdown(f"**Dates & Timeframes:** {' '.join(chips)}")
+    if keywords:
+        details_found = True
+        chips = [f"`{kw}`" for kw in keywords[:8]]
+        st.markdown(f"**Key Concepts & Terms:** {' '.join(chips)}")
+    if citations:
+        details_found = True
+        chips = [f"`{c}`" for c in citations[:6]]
+        st.markdown(f"**Scholarly Citations Identified:** {' '.join(chips)}")
+    if not details_found:
+        st.info("No named entities or specialized keywords detected.")
+
+    st.divider()
+
+    # Document text with highlights
+    st.markdown("#### Document Text with Highlights")
     _legend()
     st.markdown(_highlight_html(result["sentences"]), unsafe_allow_html=True)
 
-    # 4. Sources list
-    _show_sources(result)
+    # (i) PDF download button and Check another document
+    st.divider()
+    col_dl, col_reset = st.columns([1, 1])
+    with col_dl:
+        try:
+            pdf_bytes = generate_pdf_report(result)
+            doc_name = result.get("document_name", "Document").replace(" ", "_")
+            st.download_button(
+                label="📄 Download Official PDF Report",
+                data=pdf_bytes,
+                file_name=f"PlagiarismAI_Report_{doc_name}.pdf",
+                mime="application/pdf",
+                key="res_download_pdf_btn",
+                use_container_width=True
+            )
+        except Exception as exc:
+            st.caption(f"PDF download unavailable: {exc}")
+    with col_reset:
+        if st.button("🔄 Check Another Document", key="btn_check_another", use_container_width=True):
+            st.session_state.pop("scan_result", None)
+            st.session_state.pop("prep_result", None)
+            st.session_state.pop("nlp_analysis", None)
+            st.session_state["check_input_text"] = ""
+            st.session_state["check_doc_name"] = ""
+            st.rerun()
 
 
 def _tab_fix():
@@ -1606,12 +1778,11 @@ def _tab_fix():
     default_source = st.session_state.get("fix_target_source", "Academic Source")
 
     # Dropdown of matches if available
-    result = st.session_state.get("scan_result")
+    result = as_dict(st.session_state.get("scan_result"))
     options = []
-    if result:
-        for m in result.get("matches", []):
-            if m["type"] in COUNTED_TYPES:
-                options.append(m["sentence"])
+    for m in as_list(result.get("matches")):
+        if m.get("type") in COUNTED_TYPES:
+            options.append(m.get("sentence", ""))
 
     selected_from_list = None
     if options:
@@ -1628,7 +1799,7 @@ def _tab_fix():
             return
 
         with st.spinner("Analyzing passage and generating academic rewrite..."):
-            fix_res = fix_passage(passage_input, source_input)
+            fix_res = as_dict(fix_passage(passage_input, source_input))
 
         st.divider()
         if fix_res.get("is_fallback"):
@@ -1653,7 +1824,7 @@ def _tab_fix():
         st.code(fix_res.get("citation_suggestion", f"({source_input}, 2024)"))
 
         st.markdown("#### 3 Tips to Make Your Writing Original")
-        for tip in fix_res.get("tips", []):
+        for tip in as_list(fix_res.get("tips")):
             st.markdown(f"- {tip}")
 
 
