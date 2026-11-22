@@ -343,6 +343,121 @@ class TestWebMatching(unittest.TestCase):
         self.assertTrue(any("Document Sequence Map" in t for t in all_text), f"Document Sequence Map missing from all_text")
         self.assertTrue(any("Top Source Online" in t for t in all_text), f"Top Source Online missing from all_text")
 
+    def test_low_coverage_warning_and_unverified_expander(self):
+        """Verifies that low search coverage renders honest warning and 'Could Not Be Checked' section."""
+        scan_res = {
+            "scanned_at": "2026-11-22 12:00:00",
+            "document_name": "partial_doc.txt",
+            "status": "matches",
+            "scan_mode": "Live Web Search",
+            "pipeline": {
+                "queries_planned": 3,
+                "queries_ok": 3,
+                "results_retrieved": 6,
+                "pages_attempted": 6,
+                "pages_downloaded": 2,
+                "pages_compared": 2,
+                "sources_with_matches": 1,
+                "engine": "Tavily"
+            },
+            "stats": {
+                "overall_pct": 25.0,
+                "total_sentences": 4,
+                "exact": 1,
+                "near_exact": 0,
+                "semantic": 0,
+                "none": 3,
+                "verified_sources": 2,
+                "sources_with_matches": 1,
+                "unverified_sources": 4
+            },
+            "sources": [
+                {
+                    "title": "Readable Matched Page",
+                    "domain": "example.com",
+                    "url": "https://example.com/matched",
+                    "best_match_pct": 100.0,
+                    "highest_match_type": MATCH_EXACT,
+                    "matches": 1,
+                    "document_coverage_pct": 25.0,
+                    "verified": True,
+                    "rank": 1
+                },
+                {
+                    "title": "Readable Unmatched Page",
+                    "domain": "example.com",
+                    "url": "https://example.com/unmatched",
+                    "best_match_pct": 0.0,
+                    "highest_match_type": MATCH_ORIGINAL,
+                    "matches": 0,
+                    "document_coverage_pct": 0.0,
+                    "verified": True
+                },
+                {
+                    "title": "Blocked Anti-Bot Page",
+                    "domain": "blocked.com",
+                    "url": "https://blocked.com/anti-bot",
+                    "best_match_pct": 0.0,
+                    "highest_match_type": MATCH_ORIGINAL,
+                    "matches": 0,
+                    "document_coverage_pct": 0.0,
+                    "verified": False,
+                    "note": "Anti-bot protection / HTTP 403 Forbidden"
+                }
+            ],
+            "verified_sources": [
+                {
+                    "title": "Readable Matched Page",
+                    "domain": "example.com",
+                    "url": "https://example.com/matched",
+                    "best_match_pct": 100.0,
+                    "highest_match_type": MATCH_EXACT,
+                    "matches": 1,
+                    "document_coverage_pct": 25.0,
+                    "verified": True,
+                    "rank": 1
+                }
+            ],
+            "sentences": [
+                {
+                    "sentence": "Sentence one is an exact match.",
+                    "matched": "Sentence one is an exact match.",
+                    "score": 100.0,
+                    "type": "Exact Match",
+                    "level": "Verbatim match",
+                    "title": "Readable Matched Page",
+                    "url": "https://example.com/matched"
+                }
+            ],
+            "matches": []
+        }
+
+        at = AppTest.from_file(APP_PATH, default_timeout=30)
+        at.session_state["scan_result"] = scan_res
+        at.session_state["prep_result"] = {
+            "word_count": 20, "sentence_count": 4, "avg_sentence_len": 5.0, "vocab_richness": 0.9, "sentences": ["S1"]
+        }
+        at.session_state["nlp_analysis"] = {
+            "language": {"detected_language": "English", "code": "en", "is_multilingual": False},
+            "sentiment": {"sentiment": "Neutral", "compound": 0.0, "scores": {}},
+            "entities": {"counts": {}, "entities": []},
+            "keywords": ["test"], "citations": [], "topics": [{"name": "Science", "score": 0.9}]
+        }
+        at.session_state["check_doc_name"] = "partial_doc.txt"
+        at.session_state["check_input_text"] = "Sample content."
+
+        at.run()
+        self.assertEqual(len(at.exception), 0, f"App execution raised: {[e.value for e in at.exception]}")
+
+        warning_texts = [w.value for w in at.warning]
+        # Verify low coverage warning appears and mentions incomplete result
+        self.assertTrue(any("Result May Be Incomplete" in w or "Low Online Coverage" in w for w in warning_texts))
+        self.assertTrue(any("at least" in w for w in warning_texts))
+
+        # Verify 'Could Not Be Checked' section is present
+        all_markdown = [m.value for m in at.markdown]
+        self.assertTrue(any("Blocked Anti-Bot Page" in m for m in all_markdown))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,189 @@
+[
+  {
+    "name": "Case A: Wikipedia (Word-for-word)",
+    "originality_score": 0.0,
+    "exact": 3,
+    "near": 1,
+    "semantic": 0,
+    "original": 0,
+    "total_sentences": 4,
+    "pages_read": 6,
+    "pages_failed": 6,
+    "total_candidates": 12,
+    "top3": [
+      {
+        "title": "PYTHON | Education",
+        "url": "https://vocal.media/education/python-5e7an0oau",
+        "best_match_pct": 100.0,
+        "matches": 4,
+        "highest_match_type": "Exact copy"
+      },
+      {
+        "title": "Python (programming language) - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+        "best_match_pct": 100.0,
+        "matches": 1,
+        "highest_match_type": "Exact copy"
+      },
+      {
+        "title": "General Python FAQ \u2014 Python 3.15.2 documentation",
+        "url": "https://docs.python.org/3/faq/general.html",
+        "best_match_pct": 100.0,
+        "matches": 1,
+        "highest_match_type": "Exact copy"
+      }
+    ],
+    "top_contains_text": true,
+    "warnings": []
+  },
+  {
+    "name": "Case B: Web Article (Word-for-word)",
+    "originality_score": 0.0,
+    "exact": 0,
+    "near": 0,
+    "semantic": 3,
+    "original": 0,
+    "total_sentences": 3,
+    "pages_read": 6,
+    "pages_failed": 4,
+    "total_candidates": 10,
+    "top3": [
+      {
+        "title": "JavaScript | MDN",
+        "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript",
+        "best_match_pct": 88.5,
+        "matches": 3,
+        "highest_match_type": "Similar meaning"
+      },
+      {
+        "title": "What Are Scripting Languages? (And Why Should I Learn One?) | Coursera",
+        "url": "https://www.coursera.org/articles/scripting-language",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      },
+      {
+        "title": "JavaScript - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/JavaScript",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      }
+    ],
+    "top_contains_text": false,
+    "warnings": []
+  },
+  {
+    "name": "Case C: Near copy (3-4 words changed per sentence)",
+    "originality_score": 75.0,
+    "exact": 0,
+    "near": 0,
+    "semantic": 1,
+    "original": 3,
+    "total_sentences": 4,
+    "pages_read": 6,
+    "pages_failed": 6,
+    "total_candidates": 12,
+    "top3": [
+      {
+        "title": "Python as functional programming language - Python Help - Discussions on Python.org",
+        "url": "https://discuss.python.org/t/python-as-functional-programming-language/38402",
+        "best_match_pct": 84.3,
+        "matches": 1,
+        "highest_match_type": "Similar meaning"
+      },
+      {
+        "title": "Programming Paradigms Explained With One Worked Example - Knowledge Gate AI",
+        "url": "https://www.knowledgegate.ai/blog/programming-paradigms-concepts-and-classifications-explained",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      },
+      {
+        "title": "What Is Python Used For? A Beginner\u2019s Guide | Coursera",
+        "url": "https://www.coursera.org/articles/what-is-python-used-for-a-beginners-guide-to-using-python",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      }
+    ],
+    "top_contains_text": false,
+    "warnings": []
+  },
+  {
+    "name": "Case D: Similar meaning (Reworded with synonyms & changed structure)",
+    "originality_score": 100.0,
+    "exact": 0,
+    "near": 0,
+    "semantic": 0,
+    "original": 3,
+    "total_sentences": 3,
+    "pages_read": 6,
+    "pages_failed": 5,
+    "total_candidates": 11,
+    "top3": [
+      {
+        "title": "Coding Standards: Definition, Examples & Best Practices",
+        "url": "https://blog.codacy.com/coding-standards",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      },
+      {
+        "title": "A Systematic Literature Review on the Impact of Formatting Elements on Code Legibility",
+        "url": "https://arxiv.org/html/2208.12141v3",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      },
+      {
+        "title": "6. Software Design Principles \u2014 Kempner Institute Computing Handbook",
+        "url": "https://handbook.eng.kempnerinstitute.harvard.edu/s2_swe_for_research/software_design_principles.html",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      }
+    ],
+    "top_contains_text": false,
+    "warnings": []
+  },
+  {
+    "name": "Case E: Original text (Written fresh)",
+    "originality_score": 100.0,
+    "exact": 0,
+    "near": 0,
+    "semantic": 0,
+    "original": 3,
+    "total_sentences": 3,
+    "pages_read": 4,
+    "pages_failed": 8,
+    "total_candidates": 12,
+    "top3": [
+      {
+        "title": "Publications | Mesoscale & Microscale Meteorology",
+        "url": "https://www.mmm.ucar.edu/publications",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      },
+      {
+        "title": "2026 Allergy Forecast: When will pollen be bad across the US?",
+        "url": "https://www.accuweather.com/en/weather-forecasts/2026-allergy-forecast-when-will-pollen-be-bad-across-the-us/1868004",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      },
+      {
+        "title": "SuperMAG: Publication List",
+        "url": "https://supermag.jhuapl.edu/publications",
+        "best_match_pct": 0.0,
+        "matches": 0,
+        "highest_match_type": "Original"
+      }
+    ],
+    "top_contains_text": false,
+    "warnings": [
+      "2 of 6 sources could not be compared and are shown as unverified (not scored)."
+    ]
+  }
+]

@@ -48,6 +48,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # --------------------------------------------------------------------------
 BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 TAVILY_URL = "https://api.tavily.com/search"
+TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
 
 
 def _load_dotenv(path):
@@ -309,73 +310,98 @@ def top_terms(words, n):
 def build_search_queries(sentences, max_queries):
     """
     Build up to `max_queries` queries from the actual text of document sentences,
-    prioritizing the longest and most distinctive sentences first.
-    Uses exact-phrase search (quoted) where possible for high-precision retrieval.
+    searching exact phrases in quotes AND shorter keyword versions across the
+    first, middle, and last parts of the document.
     """
     if not sentences or max_queries < 1:
         return []
 
-    # Score each sentence: length in clean words * distinctive term weights
-    scored = []
-    for i, sentence in enumerate(sentences):
-        words = _clean_words(sentence)
-        if len(words) >= 4:
-            # Longer sentences with distinctive terms carry higher retrieval value
-            weight = sum(_term_weight(w) for w in words)
-            score = weight * math.sqrt(len(words))
-            scored.append((score, i, sentence))
+    n = len(sentences)
+    # Divide document into first, middle, and last sections
+    if n == 1:
+        sections = [(0, 1)]
+    elif n == 2:
+        sections = [(0, 1), (1, 2)]
+    else:
+        s1 = max(1, n // 3)
+        s2 = max(s1 + 1, (2 * n) // 3)
+        sections = [(0, s1), (s1, s2), (s2, n)]
 
-    if not scored:
-        scored = [(1.0, i, s) for i, s in enumerate(sentences)]
-
-    # Sort descending by score (longest, most distinctive first)
-    scored.sort(key=lambda x: -x[0])
+    # Collect and score candidate sentences for each section
+    section_candidates = []
+    for start, end in sections:
+        sec_scored = []
+        for i in range(start, end):
+            s = sentences[i]
+            words = _clean_words(s)
+            if len(words) >= 4:
+                weight = sum(_term_weight(w) for w in words)
+                score = weight * math.sqrt(len(words))
+                sec_scored.append((score, i, s))
+        if sec_scored:
+            sec_scored.sort(key=lambda x: -x[0])
+            section_candidates.append(sec_scored)
+        else:
+            sec_candidates = [(1.0, i, sentences[i]) for i in range(start, end)]
+            section_candidates.append(sec_candidates)
 
     queries, seen = [], set()
 
-    # Pass 1: Exact quoted phrases for the highest-scoring sentences
-    for _, idx, s in scored:
+    # Pass 1: Exact quoted phrases across first, middle, and last sections
+    for candidates in section_candidates:
+        if not candidates or len(queries) >= max_queries:
+            break
+        _, idx, s = candidates[0]
         words = _clean_words(s)
-        # Use full sentence if 5-18 words, or the most distinctive 12-14 word window
-        if 5 <= len(words) <= 18:
-            phrase = " ".join(words)
-        else:
-            phrase = distinctive_phrase(s, size=14)
-
+        phrase = " ".join(words[:14]) if len(words) <= 14 else distinctive_phrase(s, size=12)
         exact_q = f'"{phrase}"'
         key = exact_q.lower()
-        if key not in seen and len(phrase) >= 15:
+        if key not in seen and len(phrase) >= 12:
             seen.add(key)
             queries.append({"query": exact_q[:250], "type": QUERY_EXACT, "sentence_index": idx})
-        if len(queries) >= max_queries:
-            break
 
-    # Pass 2: If query budget remains, add distinctive phrases
+    # Pass 2: Shorter keyword queries across first, middle, and last sections
+    for candidates in section_candidates:
+        if not candidates or len(queries) >= max_queries:
+            break
+        _, idx, s = candidates[0]
+        words = _clean_words(s)
+        kw_words = [w for w in words if _term_weight(w) >= 1.2]
+        kw_phrase = " ".join(kw_words[:6]) if len(kw_words) >= 3 else distinctive_phrase(s, size=6)
+        key = kw_phrase.lower()
+        if key not in seen and len(kw_phrase) >= 8:
+            seen.add(key)
+            queries.append({"query": kw_phrase[:200], "type": QUERY_PHRASE, "sentence_index": idx})
+
+    # Pass 3: Additional distinctive queries if budget remains
     if len(queries) < max_queries:
-        for _, idx, s in scored:
-            phrase = distinctive_phrase(s, size=12)
-            key = phrase.lower()
-            if key not in seen and len(phrase) >= 12:
-                seen.add(key)
-                queries.append({"query": phrase[:250], "type": QUERY_PHRASE, "sentence_index": idx})
+        for candidates in section_candidates:
+            for _, idx, s in candidates[1:]:
+                words = _clean_words(s)
+                phrase = " ".join(words[:14]) if len(words) <= 14 else distinctive_phrase(s, size=12)
+                exact_q = f'"{phrase}"'
+                key = exact_q.lower()
+                if key not in seen and len(phrase) >= 12:
+                    seen.add(key)
+                    queries.append({"query": exact_q[:250], "type": QUERY_EXACT, "sentence_index": idx})
+                if len(queries) >= max_queries:
+                    break
             if len(queries) >= max_queries:
                 break
 
-    # Pass 3: Consecutive sentence pairs for short sentences
+    # Pass 4: Fallback generic distinctive phrases
     if len(queries) < max_queries:
-        for i in range(len(sentences) - 1):
-            w1 = _clean_words(sentences[i])
-            w2 = _clean_words(sentences[i + 1])
-            if len(w1) < 10 and len(w2) < 10:
-                combined = " ".join(w1 + w2)
-                if len(combined) >= 20:
-                    exact_pair = f'"{combined[:120]}"'
-                    key = exact_pair.lower()
-                    if key not in seen:
-                        seen.add(key)
-                        queries.append({"query": exact_pair[:250], "type": QUERY_EXACT, "sentence_index": i})
-                    if len(queries) >= max_queries:
-                        break
+        for candidates in section_candidates:
+            for _, idx, s in candidates:
+                phrase = distinctive_phrase(s, size=10)
+                key = phrase.lower()
+                if key not in seen and len(phrase) >= 8:
+                    seen.add(key)
+                    queries.append({"query": phrase[:200], "type": QUERY_PHRASE, "sentence_index": idx})
+                if len(queries) >= max_queries:
+                    break
+            if len(queries) >= max_queries:
+                break
 
     return queries[:max_queries]
 
@@ -439,18 +465,85 @@ def _search_brave(query, max_results, api_key, timeout=15):
 
 
 def _search_tavily(query, max_results, api_key, timeout=20):
-    """Tavily Search API: POST /search with a Bearer token and a JSON body."""
+    """Tavily Search API: POST /search with include_raw_content=True to get page text directly."""
     response = requests.post(
         TAVILY_URL, timeout=timeout,
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"query": query[:400], "max_results": min(max_results, 20), "search_depth": "basic"})
+        json={
+            "query": query[:400],
+            "max_results": min(max_results, 20),
+            "search_depth": "basic",
+            "include_raw_content": True
+        })
     _check_response(response, "Tavily")
     try:
         items = response.json().get("results", [])
     except ValueError:
         raise ProviderError("Tavily: response was not valid JSON")
-    return [{"title": i.get("title", ""), "href": i.get("url"), "body": i.get("content", "")}
+    return [{"title": i.get("title", ""), "href": i.get("url"), "body": i.get("content", ""),
+             "raw_content": i.get("raw_content", "")}
             for i in items]
+
+
+def _tavily_extract(urls, api_key, timeout=15):
+    """Tavily Extract API: extracts clean full page text from candidate URLs."""
+    if not urls or not api_key:
+        return {}
+    clean_urls = [u for u in urls if u and str(u).startswith("http") and not str(u).lower().endswith(".pdf")]
+    if not clean_urls:
+        return {}
+    try:
+        resp = requests.post(
+            TAVILY_EXTRACT_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"urls": clean_urls[:10]},
+            timeout=timeout
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            out = {}
+            for item in data.get("results", []):
+                u = item.get("url")
+                raw = item.get("raw_content") or item.get("content") or ""
+                if u and len(raw) >= 100:
+                    out[u] = {"text": raw, "title": item.get("title", "")}
+            return out
+    except Exception:
+        pass
+    return {}
+
+
+def _fetch_wikipedia_content(url, timeout=8):
+    """Official Wikipedia API/REST endpoint for clean extracts without web scraping or anti-bot blocks."""
+    try:
+        import urllib.parse
+        parsed = urlparse(url)
+        if "wikipedia.org" not in parsed.netloc or "/wiki/" not in parsed.path:
+            return None
+        lang = parsed.netloc.split(".")[0] if "." in parsed.netloc else "en"
+        title = parsed.path.split("/wiki/")[-1].split("#")[0]
+        if not title:
+            return None
+        api_url = f"https://{lang}.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "prop": "extracts",
+            "explaintext": 1,
+            "titles": urllib.parse.unquote(title),
+            "format": "json"
+        }
+        headers = {"User-Agent": "PlagiarismAI/2.0 (educational research bot; https://github.com/PlagiarismAI)"}
+        resp = requests.get(api_url, params=params, headers=headers, timeout=timeout)
+        if resp.status_code == 200:
+            pages = resp.json().get("query", {}).get("pages", {})
+            for pid, p in pages.items():
+                if pid != "-1":
+                    text = p.get("extract", "")
+                    if len(text) >= 100:
+                        return {"ok": True, "text": text, "page_title": p.get("title", ""), "kind": "wikipedia_api", "reason": ""}
+        return {"ok": False, "text": "", "page_title": "", "kind": "wikipedia_api", "reason": f"Wikipedia article '{title}' returned no readable text"}
+    except Exception as exc:
+        return {"ok": False, "text": "", "page_title": "", "kind": "wikipedia_api", "reason": f"Wikipedia API error: {exc}"}
 
 
 def _search_ddgs(query, max_results, api_key="", timeout=15):
@@ -548,9 +641,12 @@ def search_web_sources(queries, results_per_query=5, provider="auto"):
             item = by_url.get(key)
             if item is None:
                 item = {"title": (hit.get("title") or "").strip(), "url": url,
-                        "snippet": (hit.get("body") or "").strip(), "found_by": [], "best_rank": rank}
+                        "snippet": (hit.get("body") or "").strip(), "found_by": [], "best_rank": rank,
+                        "raw_content": hit.get("raw_content", "")}
                 by_url[key] = item
                 out["results"].append(item)
+            elif not item.get("raw_content") and hit.get("raw_content"):
+                item["raw_content"] = hit["raw_content"]
             if q["type"] not in item["found_by"]:
                 item["found_by"].append(q["type"])
             item["best_rank"] = min(item["best_rank"], rank)
@@ -706,9 +802,15 @@ def _extract_html(raw):
 def fetch_webpage_content(url, timeout=12):
     """
     Download a real page or PDF and extract readable text.
+    First checks official Wikipedia API if applicable.
+    Uses real browser User-Agent and timeouts as fallback.
     Returns {"ok", "text", "page_title", "reason", "kind", "pdf_url", "note"}.
     ok=False means the source is UNVERIFIED and must not be scored.
     """
+    wiki_res = _fetch_wikipedia_content(url, timeout=timeout)
+    if wiki_res and wiki_res.get("ok"):
+        return wiki_res
+
     result = {"ok": False, "text": "", "page_title": "", "reason": "", "kind": "",
               "pdf_url": "", "note": ""}
     try:
@@ -794,10 +896,43 @@ def run_scan(model, text, document_name, settings, progress):
     results_retrieved = len(hits)
     selected = hits[:settings["max_pages"]]
 
+    tavily_key, _ = get_secret("TAVILY_API_KEY")
     pages = {}
-    if selected:
+    remaining_hits = []
+
+    # Tier 1: Fetch Wikipedia via official API, or use Tavily search raw_content if present
+    for h in selected:
+        u = h["url"]
+        wiki_res = _fetch_wikipedia_content(u)
+        if wiki_res and wiki_res.get("ok"):
+            pages[u] = wiki_res
+            continue
+        raw_c = h.get("raw_content", "")
+        if raw_c and len(raw_c) >= 200:
+            pages[u] = {"ok": True, "text": raw_c[:600000], "page_title": h.get("title", ""),
+                        "kind": "tavily_raw", "reason": ""}
+            continue
+        remaining_hits.append(h)
+
+    # Tier 2: Batch-extract remaining URLs via Tavily Extract API
+    if remaining_hits and tavily_key:
+        urls_to_extract = [h["url"] for h in remaining_hits if not h["url"].lower().endswith(".pdf")]
+        if urls_to_extract:
+            extract_map = _tavily_extract(urls_to_extract, tavily_key)
+            still_remaining = []
+            for h in remaining_hits:
+                if h["url"] in extract_map:
+                    pages[h["url"]] = {"ok": True, "text": extract_map[h["url"]]["text"][:600000],
+                                       "page_title": extract_map[h["url"]].get("title") or h.get("title", ""),
+                                       "kind": "tavily_extract", "reason": ""}
+                else:
+                    still_remaining.append(h)
+            remaining_hits = still_remaining
+
+    # Tier 3: Fallback direct downloader with desktop browser headers and timeouts
+    if remaining_hits:
         with ThreadPoolExecutor(max_workers=6) as pool:
-            futures = {pool.submit(fetch_webpage_content, h["url"]): h for h in selected}
+            futures = {pool.submit(fetch_webpage_content, h["url"]): h for h in remaining_hits}
             finished = 0
             for future in as_completed(futures):
                 hit = futures[future]
@@ -807,8 +942,8 @@ def run_scan(model, text, document_name, settings, progress):
                     pages[hit["url"]] = {"ok": False, "text": "", "page_title": "", "reason": str(exc),
                                          "kind": "", "pdf_url": "", "note": ""}
                 finished += 1
-                progress(0.20 + 0.40 * finished / len(selected),
-                         f"Downloaded {finished}/{len(selected)} webpages...")
+                progress(0.20 + 0.40 * (len(selected) - len(remaining_hits) + finished) / max(len(selected), 1),
+                         f"Downloaded {len(pages)}/{len(selected)} webpages...")
 
     all_matches, sources = [], []
     downloaded = compared = 0
@@ -816,9 +951,9 @@ def run_scan(model, text, document_name, settings, progress):
         page = pages[hit["url"]]
         title = hit["title"] or page.get("page_title") or "(title unavailable)"
         source = {"title": title, "url": hit["url"], "verified": False, "downloaded": bool(page["ok"]),
-                  "note": page.get("reason", ""), "matches": 0, "compared_sentences": 0,
-                  "kind": page.get("kind", ""), "pdf_url": page.get("pdf_url", ""),
-                  "found_by": hit["found_by"]}
+                   "note": page.get("reason", ""), "matches": 0, "compared_sentences": 0,
+                   "kind": page.get("kind", ""), "pdf_url": page.get("pdf_url", ""),
+                   "found_by": hit["found_by"]}
         if page.get("note"):
             source["note"] = (source["note"] + " " + page["note"]).strip()
         if page["ok"]:
@@ -828,7 +963,8 @@ def run_scan(model, text, document_name, settings, progress):
             if page_sentences:
                 matches = match_against_source(model, sentences, user_embeddings, page_sentences,
                                                title, hit["url"], settings["semantic_threshold"],
-                                               settings["near_threshold"])
+                                               settings["near_threshold"],
+                                               full_page_text=page["text"])
                 source.update(verified=True, matches=len(matches), compared_sentences=len(page_sentences))
                 all_matches += matches
                 compared += 1
@@ -1694,11 +1830,19 @@ def _tab_results():
     else:
         st.caption(f"🔎 **Scan Mode Used:** {scan_mode_name}")
 
+    pipe = as_dict(result.get("pipeline"))
+    pages_found = pipe.get("results_retrieved", len(result.get("sources", [])))
+    pages_compared = pipe.get("pages_compared", stats.get("verified_sources", 0))
+    pages_failed = max(0, pages_found - pages_compared)
+    low_coverage = ("Web" in scan_mode_name and pages_found >= 2 and (pages_compared / max(pages_found, 1) < 0.5 or pages_compared < 2))
+
     # (a) Big Originality Score + one summary line
     overall_pct = stats.get("overall_pct", 0.0)
     originality = max(0.0, round(100.0 - overall_pct, 1))
 
-    if originality >= 80.0:
+    if low_coverage:
+        st.warning(f"## ⚠️ Result May Be Incomplete (Low Online Coverage)\nWe compared your text with **{pages_compared} of {pages_found} candidate pages found** online ({pages_failed} pages could not be read). Based on readable sources, your text shows **at least {originality}% originality**, but this result may be incomplete.")
+    elif originality >= 80.0:
         st.success(f"## 🟢 Originality Score: {originality}%\nYour document is predominantly original with minimal similarity to checked sources.")
     elif originality >= 50.0:
         st.warning(f"## 🟡 Originality Score: {originality}%\nYour document shows moderate similarity to checked sources; consider reviewing flagged passages.")
@@ -1717,6 +1861,9 @@ def _tab_results():
         st.markdown(f"### 📋 Summary: **{n_matched} of {total_sentences} sentences** match {source_kind_str}: **{n_exact} exact**, **{n_near} near**, **{n_semantic} similar meaning**.")
     else:
         st.markdown(f"### 📋 Summary: **0 of {total_sentences} sentences** match {source_kind_str} — your text shows **100% independent writing**.")
+
+    if "Web" in scan_mode_name and pages_found > 0:
+        st.info(f"🌐 **Search Coverage:** We compared your text with **{pages_compared} of {pages_found} pages found** online. {pages_failed} page(s) could not be read.")
 
     # (b) Match summary cards
     col_c1, col_c2, col_c3, col_c4 = st.columns(4)
@@ -1792,6 +1939,17 @@ def _tab_results():
 </div>
 """
         st.markdown(table_html, unsafe_allow_html=True)
+
+    # Candidate sources that could not be verified / compared
+    unverified_sources = [s for s in as_list(result.get("sources")) if isinstance(s, dict) and not s.get("verified")]
+    if unverified_sources:
+        with st.expander(f"⚠️ Could Not Be Checked ({len(unverified_sources)} candidate web pages)", expanded=False):
+            st.caption("The following candidate web pages were retrieved by search queries but could not be downloaded, parsed, or verified (e.g. anti-bot protection, blocked scripts, or network timeouts). They are labeled as **Unverified** and were NOT counted in your originality score:")
+            for us in unverified_sources:
+                u_title = us.get("title") or "(Title unavailable)"
+                u_url = us.get("url") or ""
+                u_reason = us.get("note") or us.get("reason") or "Page unreadable or blocked"
+                st.markdown(f"- **{u_title}** — *{u_reason}*  \n  [Open link ↗]({u_url})")
 
     st.divider()
 

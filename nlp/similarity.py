@@ -151,7 +151,7 @@ def _make_match(index, sentence, matched, score, match_type, level, title="", ur
             "title": title, "url": url}
 
 
-def detect_exact_matches(sentences, source_sentences, title="", url="", indices=None):
+def detect_exact_matches(sentences, source_sentences, title="", url="", indices=None, full_page_text=None):
     """Exact match after normalisation."""
     source_norm = [(normalize_text(s), s) for s in source_sentences]
     lookup = {}
@@ -162,6 +162,9 @@ def detect_exact_matches(sentences, source_sentences, title="", url="", indices=
         joined = source_sentences[k] + " " + source_sentences[k + 1]
         lookup.setdefault(normalize_text(joined), joined)
 
+    # Full text normalization ensures verbatim sentences are caught even if split differently
+    full_norm = normalize_text(full_page_text) if full_page_text else " ".join(n for n, _ in source_norm)
+
     matches = []
     for i in (range(len(sentences)) if indices is None else indices):
         if not _exact_eligible(sentences[i]):
@@ -169,16 +172,33 @@ def detect_exact_matches(sentences, source_sentences, title="", url="", indices=
         key = normalize_text(sentences[i])
         if not key:
             continue
+        # 1. Full sentence or sentence-pair match
         if key in lookup:
             matches.append(_make_match(i, sentences[i], lookup[key], 100.0, EXACT,
                                        "Identical wording", title, url))
             continue
-        if len(key.split()) >= 6:
+        # 2. Key is verbatim contained inside a longer source sentence
+        found = False
+        if len(key.split()) >= 4:
             for n, s in source_norm:
                 if key in n:
                     matches.append(_make_match(i, sentences[i], s, 100.0, EXACT,
                                                "Found verbatim inside a longer passage", title, url))
+                    found = True
                     break
+        if found:
+            continue
+        # 3. Key is verbatim contained anywhere in the normalized full page text
+        if len(key.split()) >= 4 and key in full_norm:
+            key_words = set(key.split())
+            best_s, best_overlap = "", 0
+            for n, s in source_norm:
+                overlap = len(key_words & set(n.split()))
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_s = s
+            matches.append(_make_match(i, sentences[i], best_s or sentences[i], 100.0, EXACT,
+                                       "Found verbatim in page text", title, url))
     return matches
 
 
@@ -304,10 +324,11 @@ def finalize_semantic_matches(matches):
 
 
 def match_against_source(model, sentences, user_embeddings, source_sentences,
-                         title, url, semantic_threshold, near_threshold):
+                         title, url, semantic_threshold, near_threshold,
+                         full_page_text=None):
     """Cascade: exact -> near-exact -> semantic. Each sentence gets one result per source."""
     everything = list(range(len(sentences)))
-    matches = detect_exact_matches(sentences, source_sentences, title, url, everything)
+    matches = detect_exact_matches(sentences, source_sentences, title, url, everything, full_page_text=full_page_text)
     done = {m["index"] for m in matches}
     remaining = [i for i in everything if i not in done]
     near = detect_near_exact_matches(sentences, source_sentences, title, url,
@@ -495,7 +516,8 @@ def scan_against_reference_corpus(model, text: str, document_name: str = "Upload
             source_url = f"file:///{fpath.replace(os.sep, '/')}"
             matches = match_against_source(model, sentences, user_embeddings, ref_sentences,
                                            title, source_url,
-                                           semantic_threshold, near_threshold)
+                                           semantic_threshold, near_threshold,
+                                           full_page_text=content)
             counted = [m for m in matches if m["type"] in COUNTED_TYPES]
             sources.append({
                 "title": title.replace("_", " ").replace(".txt", "").title(),
