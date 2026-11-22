@@ -120,6 +120,7 @@ from nlp.similarity import (
     COUNTED_TYPES,
     COLORS,
     HIGHLIGHT_BG,
+    DISPLAY_TYPE,
     CONTEXT_MIN_SIM,
     DISTINCTIVE_DF,
     LEXICAL_MIN_SHARED,
@@ -307,49 +308,76 @@ def top_terms(words, n):
 
 def build_search_queries(sentences, max_queries):
     """
-    Build up to `max_queries` queries of three kinds, interleaved so that even a
-    small query budget uses all strategies:
-      1. exact quoted phrase   2. distinctive 8-15 word phrase   3. technical keywords
-    Sentences are picked from different parts of the text, best-scoring first.
+    Build up to `max_queries` queries from the actual text of document sentences,
+    prioritizing the longest and most distinctive sentences first.
+    Uses exact-phrase search (quoted) where possible for high-precision retrieval.
     """
     if not sentences or max_queries < 1:
         return []
+
+    # Score each sentence: length in clean words * distinctive term weights
     scored = []
     for i, sentence in enumerate(sentences):
         words = _clean_words(sentence)
         if len(words) >= 4:
-            scored.append((sum(_term_weight(w) for w in words) / math.sqrt(len(words)), i))
+            # Longer sentences with distinctive terms carry higher retrieval value
+            weight = sum(_term_weight(w) for w in words)
+            score = weight * math.sqrt(len(words))
+            scored.append((score, i, sentence))
+
     if not scored:
-        scored = [(1.0, i) for i in range(len(sentences))]
+        scored = [(1.0, i, s) for i, s in enumerate(sentences)]
 
-    n_pick = min(len(scored), max(max_queries, 3))
-    segment = max(1, math.ceil(len(sentences) / n_pick))
-    best_per_segment = {}
-    for score, i in scored:
-        key = i // segment
-        if key not in best_per_segment or score > best_per_segment[key][0]:
-            best_per_segment[key] = (score, i)
-    chosen = [i for _, i in sorted(best_per_segment.values(), reverse=True)]
-
-    exact_q = [{"query": f'"{distinctive_phrase(sentences[i])}"', "type": QUERY_EXACT} for i in chosen]
-    phrase_q = [{"query": distinctive_phrase(sentences[i], size=14), "type": QUERY_PHRASE} for i in chosen]
-    all_words = [w for s in sentences for w in _clean_words(s)]
-    keyword_q = [{"query": " ".join(top_terms(all_words, 6)) + " paper", "type": QUERY_KEYWORDS}]
-    for i in chosen:
-        terms = top_terms(_clean_words(sentences[i]), 5)
-        if len(terms) >= 2:
-            keyword_q.append({"query": " ".join(terms), "type": QUERY_KEYWORDS})
+    # Sort descending by score (longest, most distinctive first)
+    scored.sort(key=lambda x: -x[0])
 
     queries, seen = [], set()
-    for group in zip_longest_lists(exact_q, keyword_q, phrase_q):
-        key = group["query"].lower()
-        if key not in seen and len(key) > 3:
+
+    # Pass 1: Exact quoted phrases for the highest-scoring sentences
+    for _, idx, s in scored:
+        words = _clean_words(s)
+        # Use full sentence if 5-18 words, or the most distinctive 12-14 word window
+        if 5 <= len(words) <= 18:
+            phrase = " ".join(words)
+        else:
+            phrase = distinctive_phrase(s, size=14)
+
+        exact_q = f'"{phrase}"'
+        key = exact_q.lower()
+        if key not in seen and len(phrase) >= 15:
             seen.add(key)
-            group["query"] = group["query"][:250]
-            queries.append(group)
+            queries.append({"query": exact_q[:250], "type": QUERY_EXACT, "sentence_index": idx})
         if len(queries) >= max_queries:
             break
-    return queries
+
+    # Pass 2: If query budget remains, add distinctive phrases
+    if len(queries) < max_queries:
+        for _, idx, s in scored:
+            phrase = distinctive_phrase(s, size=12)
+            key = phrase.lower()
+            if key not in seen and len(phrase) >= 12:
+                seen.add(key)
+                queries.append({"query": phrase[:250], "type": QUERY_PHRASE, "sentence_index": idx})
+            if len(queries) >= max_queries:
+                break
+
+    # Pass 3: Consecutive sentence pairs for short sentences
+    if len(queries) < max_queries:
+        for i in range(len(sentences) - 1):
+            w1 = _clean_words(sentences[i])
+            w2 = _clean_words(sentences[i + 1])
+            if len(w1) < 10 and len(w2) < 10:
+                combined = " ".join(w1 + w2)
+                if len(combined) >= 20:
+                    exact_pair = f'"{combined[:120]}"'
+                    key = exact_pair.lower()
+                    if key not in seen:
+                        seen.add(key)
+                        queries.append({"query": exact_pair[:250], "type": QUERY_EXACT, "sentence_index": i})
+                    if len(queries) >= max_queries:
+                        break
+
+    return queries[:max_queries]
 
 
 def zip_longest_lists(*lists):
@@ -810,12 +838,73 @@ def run_scan(model, text, document_name, settings, progress):
         progress(0.60 + 0.35 * (k + 1) / len(selected), f"Compared {k + 1}/{len(selected)} sources...")
 
     finalize_semantic_matches(all_matches)       # needs every source: "found in many sources" = standard statement
-    counted_per_source = Counter(m["url"] for m in all_matches if m["type"] in COUNTED_TYPES)
+
+    # Compute per-source statistics
     for source in sources:
-        if source["verified"]:
-            source["matches"] = counted_per_source[source["url"]]   # topical candidates are not matches
+        s_matches = [m for m in all_matches if (m.get("url") == source.get("url") or (source.get("title") and m.get("title") == source.get("title"))) and m["type"] in COUNTED_TYPES]
+        unique_indices = set(m["index"] for m in s_matches)
+        source["matches"] = len(unique_indices)
+        source["best_match_pct"] = round(float(max((m["score"] for m in s_matches), default=0.0)), 1)
+        source["document_coverage_pct"] = round((len(unique_indices) / max(len(sentences), 1)) * 100, 1)
+        if any(m["type"] == EXACT for m in s_matches):
+            source["highest_match_type"] = "Exact copy"
+        elif any(m["type"] == NEAR for m in s_matches):
+            source["highest_match_type"] = "Near copy"
+        elif any(m["type"] == SEMANTIC for m in s_matches):
+            source["highest_match_type"] = "Similar meaning"
+        else:
+            source["highest_match_type"] = "Original"
+
+    # Rank verified sources with matches: highest match % first, then matched sentences
+    matching_sources = [s for s in sources if s.get("verified") and s.get("matches", 0) > 0]
+    matching_sources.sort(key=lambda s: (-s.get("best_match_pct", 0.0), -s.get("matches", 0), -s.get("document_coverage_pct", 0.0)))
+    for r_idx, s in enumerate(matching_sources):
+        s["rank"] = r_idx + 1
+
+    all_ranked_sources = matching_sources + [s for s in sources if s not in matching_sources]
+
+    # Group matches by sentence to select best primary match and annotate 'also_found_on'
+    matches_by_sentence = {}
+    for m in all_matches:
+        if m["type"] in COUNTED_TYPES:
+            matches_by_sentence.setdefault(m["index"], []).append(m)
+
+    primary_matches = []
+    for idx_sent, s_match_list in matches_by_sentence.items():
+        s_match_list.sort(key=lambda m: (-RANK.get(m["type"], 0), -m.get("score", 0.0)))
+        best_m = dict(s_match_list[0])
+        extra = s_match_list[1:]
+        best_m["also_found_on"] = [
+            {
+                "title": em.get("title", ""),
+                "url": em.get("url", ""),
+                "score": round(float(em.get("score", 0.0)), 1),
+                "type": DISPLAY_TYPE.get(em.get("type"), em.get("type"))
+            }
+            for em in extra
+        ]
+        primary_matches.append(best_m)
+
+    primary_matches.sort(key=lambda m: -m.get("score", 0.0))
+
     sentence_rows, stats = summarize_matches(sentences, all_matches)
-    with_matches = len([s for s in sources if s["verified"] and s["matches"] > 0])
+    for row_idx, row in enumerate(sentence_rows):
+        if row_idx in matches_by_sentence:
+            sorted_m = sorted(matches_by_sentence[row_idx], key=lambda m: (-RANK.get(m["type"], 0), -m.get("score", 0.0)))
+            row["matched"] = sorted_m[0].get("matched", "")
+            row["title"] = sorted_m[0].get("title", "")
+            row["url"] = sorted_m[0].get("url", "")
+            row["also_found_on"] = [
+                {
+                    "title": em.get("title", ""),
+                    "url": em.get("url", ""),
+                    "score": round(float(em.get("score", 0.0)), 1),
+                    "type": DISPLAY_TYPE.get(em.get("type"), em.get("type"))
+                }
+                for em in sorted_m[1:]
+            ]
+
+    with_matches = len(matching_sources)
     stats.update(verified_sources=compared, sources_with_matches=with_matches,
                  unverified_sources=len(sources) - compared)
 
@@ -853,11 +942,21 @@ def run_scan(model, text, document_name, settings, progress):
 
     progress(1.0, "Done")
     return {
-        "kind": "web_scan", "status": status, "incomplete_reason": reason,
+        "kind": "web_scan",
+        "scan_mode": "Live Web Search",
+        "status": status,
+        "incomplete_reason": reason,
         "document_name": document_name,
         "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "sentences": sentence_rows, "matches": all_matches, "sources": sources,
-        "stats": stats, "pipeline": pipeline, "warnings": warnings,
+        "sentences": sentence_rows,
+        "matches": primary_matches if primary_matches else all_matches,
+        "sentence_matches": primary_matches if primary_matches else all_matches,
+        "all_matches": all_matches,
+        "sources": all_ranked_sources,
+        "verified_sources": matching_sources,
+        "stats": stats,
+        "pipeline": pipeline,
+        "warnings": warnings,
         "settings": {k: settings[k] for k in settings},
     }
 
@@ -939,6 +1038,8 @@ def get_scan_details(scan_id):
 
 def _normalize_result(result):
     """Fill in fields that results saved by the first version of the app do not have."""
+    result.setdefault("scanned_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    result.setdefault("document_name", "Document")
     stats = result.setdefault("stats", {})
     for key in ("total_sentences", "exact", "near_exact", "semantic", "none", "verified_sources",
                 "sources_with_matches", "unverified_sources"):
@@ -1079,7 +1180,7 @@ def generate_pdf_report(result):
     limit = 150
     by_type = {t: sorted([m for m in result["matches"] if m["type"] == t], key=lambda m: -m["score"])
                for t in (EXACT, NEAR, SEMANTIC, TOPICAL)}
-    status_of = {i: row["status"] for i, row in enumerate(result["sentences"])}
+    status_of = {i: row.get("status", row.get("type", NONE)) for i, row in enumerate(result["sentences"])}
     for heading, items in (("Exact matches", by_type[EXACT]),
                            ("Near-exact matches", by_type[NEAR]),
                            ("Semantic matches (BERT)", by_type[SEMANTIC]),
@@ -1108,14 +1209,21 @@ def generate_pdf_report(result):
 def _highlight_html(sentence_rows):
     parts = []
     for row in sentence_rows:
-        text = html.escape(row["text"])
-        if row["status"] in HIGHLIGHT_BG:
-            tip = f"{row['status']} - {row['score']:.1f}%"
-            if row.get("semantic_sources") and row["status"] != SEMANTIC:
+        if isinstance(row, str):
+            parts.append(html.escape(row))
+            continue
+        if not isinstance(row, dict):
+            continue
+        text = html.escape(row.get("text") or row.get("sentence") or "")
+        status = row.get("status") or row.get("type") or NONE
+        score = row.get("score", 0.0)
+        if status in HIGHLIGHT_BG:
+            tip = f"{status} - {float(score):.1f}%"
+            if row.get("semantic_sources") and status != SEMANTIC:
                 tip += f" (also similar in meaning to {row['semantic_sources']} other source(s))"
-            parts.append(f'<span title="{tip}" style="background:{HIGHLIGHT_BG[row["status"]]};'
+            parts.append(f'<span title="{tip}" style="background:{HIGHLIGHT_BG[status]};'
                          f'color:#111;padding:2px 4px;border-radius:4px;'
-                         f'border-bottom:2px solid {COLORS[row["status"]]};">{text}</span>')
+                         f'border-bottom:2px solid {COLORS.get(status, "#9ca3af")};">{text}</span>')
         else:
             parts.append(text)
     return '<div style="line-height:2;font-size:0.95rem">' + " ".join(parts) + "</div>"
@@ -1432,41 +1540,42 @@ def _tab_check(settings):
     st.markdown("### Document Originality & Writing Checker")
     st.write("Check how original your writing is, in a few seconds.")
 
-    # 1-Click Demo Sample Selectors
-    st.markdown("**Quick Demo Samples (click to load):**")
-    c_s1, c_s2, c_s3 = st.columns(3)
-    if c_s1.button("📄 Original Essay (Microgrids)", key="load_orig_btn", use_container_width=True):
-        st.session_state["check_input_text"] = _load_sample_file("sample_original.txt")
-        st.session_state["check_doc_name"] = "sample_original.txt"
-    if c_s2.button("⚠️ Copied & Paraphrased", key="load_copy_btn", use_container_width=True):
-        st.session_state["check_input_text"] = _load_sample_file("sample_copied.txt")
-        st.session_state["check_doc_name"] = "sample_copied.txt"
-    if c_s3.button("🌐 Hindi Document", key="load_hindi_btn", use_container_width=True):
-        st.session_state["check_input_text"] = _load_sample_file("sample_hindi.txt")
-        st.session_state["check_doc_name"] = "sample_hindi.txt"
-
     # Input text / file
     upload = st.file_uploader("Upload a document (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"], key="check_upload")
     default_text = st.session_state.get("check_input_text", "")
     pasted = st.text_area("Or paste your document text here", value=default_text, height=220, key="check_text_area")
 
+    tavily_key, _ = get_secret("TAVILY_API_KEY")
+    brave_key, _ = get_secret("BRAVE_API_KEY")
+    has_search_key = bool(tavily_key or brave_key)
+
+    OPT_WEB = "Search the web (best for checking online text)"
+    OPT_REF = "Use my reference library only"
+
     col_opt1, col_opt2 = st.columns([2, 1])
     with col_opt1:
-        mode_choice = st.radio(
-            "Comparison source",
-            ["Reference Library (Fast, Recommended)", "Live Web Search (Requires API Key)"],
-            horizontal=True,
-            key="check_mode_choice"
-        )
-    with col_opt2:
-        tavily_key, _ = get_secret("TAVILY_API_KEY")
-        brave_key, _ = get_secret("BRAVE_API_KEY")
-        if tavily_key:
-            st.caption("🌐 **Web search is ready** (Tavily connected).")
-        elif brave_key:
-            st.caption("🌐 **Web search is ready** (Brave connected).")
+        if has_search_key:
+            mode_choice = st.radio(
+                "Comparison source",
+                [OPT_WEB, OPT_REF],
+                index=0,
+                horizontal=True,
+                key="check_mode_choice"
+            )
         else:
-            st.caption("ℹ️ **Web search is not set up** — using reference library.")
+            mode_choice = st.radio(
+                "Comparison source",
+                [OPT_REF],
+                index=0,
+                horizontal=True,
+                key="check_mode_choice"
+            )
+    with col_opt2:
+        if has_search_key:
+            p_name = "Tavily" if tavily_key else "Brave"
+            st.caption(f"🌐 **Web search is ready** ({p_name} connected).")
+        else:
+            st.caption("ℹ️ **Web search is not set up** (no search API key in .env) — using your reference library.")
 
     if st.button("Check my document", type="primary", key="main_check_btn", use_container_width=True):
         try:
@@ -1509,7 +1618,7 @@ def _tab_check(settings):
             topics_res = extract_document_topics(text)
 
             bar.progress(0.65, text="Comparing text against sources...")
-            if "Live Web Search" in mode_choice:
+            if mode_choice == OPT_WEB:
                 if tavily_key:
                     settings["provider"] = "tavily"
                 elif brave_key:
@@ -1526,6 +1635,7 @@ def _tab_check(settings):
                         near_threshold=settings["near_threshold"]
                     )
                     scan_res["fallback_to_library"] = True
+                    scan_res["scan_mode"] = "Reference Library (fallback from web search)"
             else:
                 scan_res = scan_against_reference_corpus(
                     model, text_for_scan, name,
@@ -1564,103 +1674,275 @@ def _tab_results():
     stats = as_dict(result.get("stats"))
     nlp = as_dict(st.session_state.get("nlp_analysis"))
 
-    matches = [m for m in as_list(result.get("matches")) if m.get("type") in COUNTED_TYPES]
-    matched_sources = [s for s in as_list(result.get("sources")) if s.get("verified") and s.get("matches", 0) > 0]
+    matches = [m for m in as_list(result.get("matches")) if isinstance(m, dict) and m.get("type") in COUNTED_TYPES]
+    # Verified sources with actual matches, ranked highest best_match_pct first
+    matching_sources = [s for s in as_list(result.get("sources")) if isinstance(s, dict) and s.get("verified") and s.get("matches", 0) > 0]
+    matching_sources.sort(key=lambda s: (-s.get("best_match_pct", 0.0), -s.get("matches", 0), -s.get("document_coverage_pct", 0.0)))
+    for r_idx, s in enumerate(matching_sources):
+        s["rank"] = r_idx + 1
 
     st.subheader(f"Results for: {result.get('document_name', 'Document')}")
     st.caption(f"Checked on {result.get('scanned_at', '')}")
 
-    # Notice if live web search fell back to local library
+    scan_mode_name = result.get("scan_mode", "Live Web Search" if result.get("pipeline", {}).get("engine") not in ("none", "Academic Reference Library") else "Reference Library")
+
+    # Honesty status banner: clearly show mode used and if web search fell back
     if result.get("fallback_to_library"):
-        st.warning("⚠️ **Live Web Search Notice:** Live web search could not complete (network, provider or quota limit). The document was compared against the verified reference library instead.")
-
-    # (h) Short summary line at the top
-    if matches:
-        st.markdown(f"### 📋 Summary: **{len(matches)} copied parts** found from **{len(matched_sources)} verified sources**.")
+        st.warning("⚠️ **Live Web Search Notice:** Live web search could not complete (network, provider or quota limit). The document was compared against your verified reference library instead.")
+    elif result.get("status") == "no_matches" and "Web" in scan_mode_name:
+        st.info("🌐 **Web Search Status:** Searched online sources via Tavily and downloaded candidate pages. No sentences matched external sources above similarity thresholds.")
     else:
-        st.markdown("### 📋 Summary: **No copied parts found** — your text shows strong independent writing.")
+        st.caption(f"🔎 **Scan Mode Used:** {scan_mode_name}")
 
-    # (a) Big originality score (green/yellow/red) with one plain sentence
+    # (a) Big Originality Score + one summary line
     overall_pct = stats.get("overall_pct", 0.0)
     originality = max(0.0, round(100.0 - overall_pct, 1))
 
     if originality >= 80.0:
-        st.success(f"## 🟢 Originality Score: {originality}%\nYour document is predominantly original with minimal similarity to checked literature.")
+        st.success(f"## 🟢 Originality Score: {originality}%\nYour document is predominantly original with minimal similarity to checked sources.")
     elif originality >= 50.0:
-        st.warning(f"## 🟡 Originality Score: {originality}%\nYour document shows moderate similarity to existing literature; consider reviewing flagged passages.")
+        st.warning(f"## 🟡 Originality Score: {originality}%\nYour document shows moderate similarity to checked sources; consider reviewing flagged passages.")
     else:
-        st.error(f"## 🔴 Originality Score: {originality}%\nYour document contains substantial overlap with existing literature; citations or rewrites are recommended.")
+        st.error(f"## 🔴 Originality Score: {originality}%\nYour document contains substantial overlap with checked sources; citations or rewrites are recommended.")
 
-    # (b) Language badge showing the translation provider actually used
-    lang_info = as_dict(nlp.get("language"))
-    lang_name = lang_info.get("language", "English")
-    if lang_info.get("is_multilingual"):
-        trans_info = as_dict(nlp.get("translation"))
-        prov = trans_info.get("provider", "fallback translator")
-        has_google_key = bool(os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip())
-        if has_google_key and "Google Cloud" in prov:
-            prov_label = "Google Cloud Translation"
-        else:
-            prov_label = "fallback translator"
-        conf = int(lang_info.get("confidence", 0.8) * 100)
-        st.info(f"🌐 **Language Detected:** {lang_name} ({conf}% confidence) — translated to English for comparison via **{prov_label}**.")
+    total_sentences = stats.get("total_sentences", len(result.get("sentences", [])))
+    n_exact = stats.get("exact", 0)
+    n_near = stats.get("near_exact", 0)
+    n_semantic = stats.get("semantic", 0)
+    n_original = stats.get("none", max(0, total_sentences - (n_exact + n_near + n_semantic)))
+    n_matched = total_sentences - n_original
+
+    source_kind_str = "online sources" if "Web" in scan_mode_name else "reference sources"
+    if n_matched > 0:
+        st.markdown(f"### 📋 Summary: **{n_matched} of {total_sentences} sentences** match {source_kind_str}: **{n_exact} exact**, **{n_near} near**, **{n_semantic} similar meaning**.")
     else:
-        st.caption(f"🌐 **Language:** {lang_name} (original)")
+        st.markdown(f"### 📋 Summary: **0 of {total_sentences} sentences** match {source_kind_str} — your text shows **100% independent writing**.")
+
+    # (b) Match summary cards
+    col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+    exact_pct = round((n_exact / max(total_sentences, 1)) * 100, 1)
+    near_pct = round((n_near / max(total_sentences, 1)) * 100, 1)
+    similar_pct = round((n_semantic / max(total_sentences, 1)) * 100, 1)
+    original_pct = round((n_original / max(total_sentences, 1)) * 100, 1)
+
+    with col_c1:
+        st.metric("Exact copy", f"{n_exact} ({exact_pct}%)", help="Identical or verbatim contained wording (100% match)")
+    with col_c2:
+        st.metric("Near copy", f"{n_near} ({near_pct}%)", help="Very high text overlap with small edits (90-99% match)")
+    with col_c3:
+        st.metric("Similar meaning", f"{n_semantic} ({similar_pct}%)", help="Conceptual similarity with different wording")
+    with col_c4:
+        st.metric("Original", f"{n_original} ({original_pct}%)", help="Independent sentences with no meaningful external overlap")
 
     st.divider()
 
-    # (c) Copied parts
-    st.markdown("#### 1. Copied Parts")
-    if not matches:
-        st.info("🎉 **No copied parts found!** None of your sentences exceeded similarity thresholds against reference materials.")
+    # (c) "Verified sources" table ranked from highest to lowest match
+    st.markdown("#### 1. Verified Sources")
+    st.caption("Only sources that were downloaded and had at least one sentence match are shown, ranked from highest match % to lowest.")
+
+    if not matching_sources:
+        st.info("No external sources matched your text above similarity thresholds.")
     else:
-        for idx, m in enumerate(matches):
-            score_pct = int(round(m.get("score", 0.0)))
-            m_type = m.get("type", "")
-            if m_type == EXACT:
-                kind = "Exact copy"
-            elif m_type == NEAR:
-                kind = "Reworded"
+        table_html = """
+<div style="overflow-x: auto; margin-bottom: 20px;">
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+    <thead>
+      <tr style="border-bottom: 2px solid #555; text-align: left;">
+        <th style="padding: 8px;">Rank</th>
+        <th style="padding: 8px;">Source Title</th>
+        <th style="padding: 8px;">Domain</th>
+        <th style="padding: 8px;">Best Match %</th>
+        <th style="padding: 8px;">Match Type</th>
+        <th style="padding: 8px;">Matched Sentences</th>
+        <th style="padding: 8px;">Link</th>
+      </tr>
+    </thead>
+    <tbody>
+"""
+        for r_idx, s in enumerate(matching_sources):
+            title = s.get("title", "Source document")
+            url = s.get("url", "")
+            domain = urlparse(url).netloc if url and url.startswith("http") else "Reference Library"
+            best_pct = s.get("best_match_pct", 0.0)
+            m_type = s.get("highest_match_type", "Similar meaning")
+            m_count = s.get("matches", 0)
+            doc_cov = s.get("document_coverage_pct", 0.0)
+            if url and url.startswith("http"):
+                link_tag = f'<a href="{url}" target="_blank" rel="noopener noreferrer" style="color: #4da6ff; font-weight: bold;">Open source ↗</a>'
             else:
-                kind = "Similar meaning"
+                link_tag = '<span style="color: #888;">Local file</span>'
+
+            badge_color = "#EF5350" if "Exact" in m_type else ("#FFA726" if "Near" in m_type else "#AB47BC")
+            type_badge = f'<span style="background:{badge_color}; color:#fff; padding:2px 8px; border-radius:4px; font-size:0.8rem;">{m_type}</span>'
+
+            table_html += f"""
+      <tr style="border-bottom: 1px solid #333;">
+        <td style="padding: 8px; font-weight: bold;">#{r_idx + 1}</td>
+        <td style="padding: 8px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{title}">{title}</td>
+        <td style="padding: 8px; color: #aaa;"><code>{domain}</code></td>
+        <td style="padding: 8px; font-weight: bold;">{best_pct:.1f}%</td>
+        <td style="padding: 8px;">{type_badge}</td>
+        <td style="padding: 8px;">{m_count} ({doc_cov}% of doc)</td>
+        <td style="padding: 8px;">{link_tag}</td>
+      </tr>
+"""
+        table_html += """
+    </tbody>
+  </table>
+</div>
+"""
+        st.markdown(table_html, unsafe_allow_html=True)
+
+    st.divider()
+
+    # (d) "Copied parts"
+    st.markdown("#### 2. Copied Parts")
+    st.caption("Each flagged sentence compared side-by-side with its matching source text, sorted by similarity.")
+
+    filter_choice = st.selectbox(
+        "Filter copied parts by match type:",
+        ["All flagged passages", "Exact copy only", "Near copy only", "Similar meaning only"],
+        key="filter_copied_parts"
+    )
+
+    flagged_matches = [m for m in as_list(result.get("matches")) if isinstance(m, dict) and m.get("type") in COUNTED_TYPES]
+    flagged_matches.sort(key=lambda m: -m.get("score", 0.0))
+
+    if filter_choice == "Exact copy only":
+        flagged_matches = [m for m in flagged_matches if m.get("type") == EXACT or "Exact" in m.get("type", "")]
+    elif filter_choice == "Near copy only":
+        flagged_matches = [m for m in flagged_matches if m.get("type") == NEAR or "Near" in m.get("type", "")]
+    elif filter_choice == "Similar meaning only":
+        flagged_matches = [m for m in flagged_matches if m.get("type") == SEMANTIC or "Similar" in m.get("type", "")]
+
+    if not flagged_matches:
+        st.info("🎉 No copied parts match the selected filter. None of your sentences exceeded thresholds.")
+    else:
+        for idx, m in enumerate(flagged_matches):
+            score_pct = m.get("score", 0.0)
+            m_type = m.get("type", "")
+            plain_type = DISPLAY_TYPE.get(m_type, "Similar meaning" if "Semantic" in m_type else ("Near copy" if "Near" in m_type else "Exact copy"))
             title = m.get("title", "Reference Source")
             url = m.get("url", "")
 
-            st.markdown(f"**Passage {idx + 1}** — `{kind}` ({score_pct}% similarity)")
-            st.markdown(f"> \"{m.get('sentence', '')}\"")
-            if url and url.startswith("http"):
-                st.markdown(f"Source: [{title}]({url})")
-            else:
-                st.caption(f"Source: {title}")
+            badge_col = "#EF5350" if "Exact" in plain_type else ("#FFA726" if "Near" in plain_type else "#AB47BC")
+            st.markdown(f"##### Passage {idx + 1} — <span style='background:{badge_col}; color:#fff; padding:3px 8px; border-radius:4px;'>{plain_type}</span> ({score_pct:.1f}% similarity)", unsafe_allow_html=True)
 
-            if st.button(f"Fix Passage {idx + 1}", key=f"btn_fix_part_{idx}"):
+            col_l, col_r = st.columns(2)
+            with col_l:
+                st.markdown("**Your sentence:**")
+                st.info(f"\"{m.get('sentence', '')}\"")
+            with col_r:
+                st.markdown(f"**Matching text in source:** (*{title}*)")
+                matched_text = m.get("matched", "") or m.get("sentence", "")
+                st.warning(f"\"{matched_text}\"")
+
+            if url and url.startswith("http"):
+                st.markdown(f"**Primary Source:** <a href='{url}' target='_blank' rel='noopener noreferrer'>{title} ↗</a>", unsafe_allow_html=True)
+            else:
+                st.caption(f"**Primary Source:** {title}")
+
+            also_found = as_list(m.get("also_found_on"))
+            if also_found:
+                also_parts = []
+                for af in also_found:
+                    if isinstance(af, dict):
+                        af_title = af.get("title", "Another source")
+                        af_url = af.get("url", "")
+                        af_score = af.get("score", 0.0)
+                        if af_url and af_url.startswith("http"):
+                            also_parts.append(f"<a href='{af_url}' target='_blank' rel='noopener noreferrer'>{af_title}</a> ({af_score:.1f}%)")
+                        else:
+                            also_parts.append(f"{af_title} ({af_score:.1f}%)")
+                if also_parts:
+                    st.markdown("<small style='color:#aaa;'>ℹ️ <b>Also found on:</b> " + " • ".join(also_parts) + "</small>", unsafe_allow_html=True)
+
+            if st.button(f"Fix this passage #{idx + 1}", key=f"btn_fix_part_{idx}"):
                 st.session_state["fix_target_sentence"] = m.get("sentence", "")
                 st.session_state["fix_target_source"] = title
                 st.session_state["fix_target_url"] = url
-                st.info(f"Passage {idx + 1} selected! Please switch to the **Fix it for me** tab above to see your rewrite.")
+                st.info(f"Passage {idx + 1} selected! Please switch to the **Fix it for me** tab above to see your AI rewrite.")
             st.write("")
 
     st.divider()
 
-    # (d) Verified sources
-    st.markdown("#### 2. Verified Sources")
-    if not matched_sources:
-        st.info("No external sources matched your text.")
-    else:
-        for s in matched_sources:
-            title = s.get("title", "Source document")
-            url = s.get("url", "")
-            matches_count = s.get("matches", 0)
-            domain = urlparse(url).netloc if url and url.startswith("http") else "Local Reference Library"
-            if url and url.startswith("http"):
-                st.markdown(f"- 📄 **[{title}]({url})** (`{domain}`) — **{matches_count} matching sentence(s)** — [Open source ↗]({url})")
-            else:
-                st.markdown(f"- 📄 **{title}** (`{domain}`) — **{matches_count} matching sentence(s)**")
+    # (e) Analysis section with charts
+    st.markdown("#### 3. Visual Analysis")
+    col_ch1, col_ch2 = st.columns(2)
+
+    with col_ch1:
+        # Chart 1: Donut chart of document breakdown
+        pie_labels = ["Exact copy", "Near copy", "Similar meaning", "Original"]
+        pie_values = [n_exact, n_near, n_semantic, n_original]
+        pie_colors = ["#EF5350", "#FFA726", "#AB47BC", "#66BB6A"]
+
+        fig_pie = go.Figure(data=[go.Pie(
+            labels=pie_labels,
+            values=pie_values,
+            hole=0.45,
+            marker=dict(colors=pie_colors),
+            textinfo="label+value+percent",
+            hoverinfo="label+percent+value",
+            sort=False
+        )])
+        fig_pie.update_layout(
+            title="Document Originality Breakdown",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=20, r=20, t=40, b=20),
+            height=320,
+            showlegend=False
+        )
+        st.plotly_chart(fig_pie, use_container_width=True, key="chart_doc_donut")
+
+    with col_ch2:
+        # Chart 2: Top sources by best match %
+        if matching_sources:
+            top_sources = matching_sources[:8]
+            y_titles = [s.get("title", "")[:32] + ("..." if len(s.get("title", "")) > 32 else "") for s in top_sources][::-1]
+            x_scores = [s.get("best_match_pct", 0.0) for s in top_sources][::-1]
+            bar_colors = ["#EF5350" if "Exact" in s.get("highest_match_type", "") else ("#FFA726" if "Near" in s.get("highest_match_type", "") else "#AB47BC") for s in top_sources][::-1]
+
+            fig_bar = go.Figure(data=[go.Bar(
+                x=x_scores,
+                y=y_titles,
+                orientation="h",
+                marker=dict(color=bar_colors),
+                text=[f"{score:.1f}%" for score in x_scores],
+                textposition="auto"
+            )])
+            fig_bar.update_layout(
+                title="Top Matched Sources by Peak Similarity (%)",
+                xaxis=dict(range=[0, 105], title="Peak Similarity %"),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=20, r=20, t=40, b=20),
+                height=320
+            )
+            st.plotly_chart(fig_bar, use_container_width=True, key="chart_top_sources_bar")
+        else:
+            st.info("No external sources exceeded similarity thresholds to plot.")
+
+    # Document Map Strip
+    st.markdown("##### Document Sequence Map")
+    st.caption("Each tile represents a sentence in reading order, colored by match classification so you can spot where copied sections are located.")
+    sentence_rows = as_list(result.get("sentences"))
+    if sentence_rows:
+        map_html = '<div style="display:flex; flex-wrap:wrap; gap:6px; padding:12px; background:#1e1e1e; border-radius:8px; border:1px solid #444; margin-bottom:15px;">'
+        for s_idx, s_row in enumerate(sentence_rows):
+            status = s_row.get("status", NONE)
+            score = s_row.get("score", 0.0)
+            clean_status = DISPLAY_TYPE.get(status, "Original" if status == NONE else status)
+            color = "#EF5350" if "Exact" in clean_status else ("#FFA726" if "Near" in clean_status else ("#AB47BC" if "Similar" in clean_status else "#66BB6A"))
+            text_snip = s_row.get("text", "")[:60].replace('"', '&quot;')
+            map_html += f'<div style="background:{color}; color:#fff; padding:6px 10px; border-radius:4px; font-size:0.8rem; font-weight:bold; cursor:pointer;" title="Sentence {s_idx + 1} ({clean_status} - {score:.1f}%): {text_snip}...">S{s_idx + 1}</div>'
+        map_html += '</div>'
+        st.markdown(map_html, unsafe_allow_html=True)
 
     st.divider()
 
-    # (e) Tone of your writing
-    st.markdown("#### 3. Tone of Your Writing")
+    # (f) Tone of your writing
+    st.markdown("#### 4. Tone of Your Writing")
     sentiment = as_dict(nlp.get("sentiment"))
     tone_label = sentiment.get("label", "Neutral")
     tone_conf = int(sentiment.get("confidence", 0.85) * 100)
@@ -1681,8 +1963,8 @@ def _tab_results():
 
     st.divider()
 
-    # (f) What your document is about
-    st.markdown("#### 4. What Your Document Is About")
+    # What your document is about (3 topic chips)
+    st.markdown("#### 5. What Your Document Is About")
     topics_data = nlp.get("topics")
     topics_list = as_list(topics_data, "topics")
     if topics_list:
@@ -1701,8 +1983,8 @@ def _tab_results():
 
     st.divider()
 
-    # (g) Key details found
-    st.markdown("#### 5. Key Details Found")
+    # Key details found
+    st.markdown("#### 6. Key Details Found")
     entities = as_dict(nlp.get("entities"))
     keywords = as_list(nlp.get("keywords"))
     citations = as_list(nlp.get("citations"))
@@ -1737,12 +2019,30 @@ def _tab_results():
 
     st.divider()
 
+    # (g) Language badge showing the translation provider actually used
+    lang_info = as_dict(nlp.get("language"))
+    lang_name = lang_info.get("language", "English")
+    if lang_info.get("is_multilingual"):
+        trans_info = as_dict(nlp.get("translation"))
+        prov = trans_info.get("provider", "fallback translator")
+        has_google_key = bool(os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip())
+        if has_google_key and "Google Cloud" in prov:
+            prov_label = "Google Cloud Translation"
+        else:
+            prov_label = "fallback translator"
+        conf = int(lang_info.get("confidence", 0.8) * 100)
+        st.info(f"🌐 **Language Detected:** {lang_name} ({conf}% confidence) — translated to English for comparison via **{prov_label}**.")
+    else:
+        st.caption(f"🌐 **Language:** {lang_name} (original)")
+
+    st.divider()
+
     # Document text with highlights
     st.markdown("#### Document Text with Highlights")
     _legend()
     st.markdown(_highlight_html(result["sentences"]), unsafe_allow_html=True)
 
-    # (i) PDF download button and Check another document
+    # (h) PDF download button and Check another document
     st.divider()
     col_dl, col_reset = st.columns([1, 1])
     with col_dl:

@@ -22,35 +22,25 @@ class TestUISmoke(unittest.TestCase):
         titles = [t.value for t in at.title]
         self.assertTrue(any("PlagiarismAI" in t for t in titles))
 
-    def test_demo_sample_buttons_click_cleanly(self):
-        """Verify that clicking each 1-click sample button loads text without error."""
+    def test_source_mode_radio_and_input_clean(self):
+        """Verify the Check tab source mode radio options and manual text input run cleanly without error."""
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()
         self.assertEqual(len(at.exception), 0)
 
-        # 1. Original essay sample
-        orig_btn = [b for b in at.button if b.key == "load_orig_btn"]
-        self.assertTrue(len(orig_btn) > 0)
-        orig_btn[0].click().run()
-        self.assertEqual(len(at.exception), 0)
-        self.assertEqual(at.session_state["check_doc_name"], "sample_original.txt")
-        self.assertIn("microgrid", at.session_state["check_input_text"].lower())
+        # Verify radio options for source mode exist
+        radios = [r for r in at.radio if r.key == "check_mode_choice"]
+        self.assertTrue(len(radios) > 0)
+        radio = radios[0]
+        self.assertIn("Search the web", radio.options[0])
+        self.assertIn("Use my reference library only", radio.options[1])
 
-        # 2. Copied essay sample
-        copy_btn = [b for b in at.button if b.key == "load_copy_btn"]
-        self.assertTrue(len(copy_btn) > 0)
-        copy_btn[0].click().run()
+        # Test entering text into check_text_area
+        text_areas = [ta for ta in at.text_area if ta.key == "check_text_area"]
+        self.assertTrue(len(text_areas) > 0)
+        text_areas[0].input("This is an original test document for plagiarism verification.").run()
         self.assertEqual(len(at.exception), 0)
-        self.assertEqual(at.session_state["check_doc_name"], "sample_copied.txt")
-        self.assertIn("federated", at.session_state["check_input_text"].lower())
-
-        # 3. Hindi document sample
-        hindi_btn = [b for b in at.button if b.key == "load_hindi_btn"]
-        self.assertTrue(len(hindi_btn) > 0)
-        hindi_btn[0].click().run()
-        self.assertEqual(len(at.exception), 0)
-        self.assertEqual(at.session_state["check_doc_name"], "sample_hindi.txt")
-        self.assertTrue(len(at.session_state["check_input_text"]) > 20)
+        self.assertEqual(text_areas[0].value, "This is an original test document for plagiarism verification.")
 
     def test_sidebar_is_clean_and_developer_settings_are_isolated(self):
         """Verify sidebar has no developer sliders and search diagnostics uses prefixed keys."""

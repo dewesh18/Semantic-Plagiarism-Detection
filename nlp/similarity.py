@@ -29,6 +29,14 @@ COUNTED_TYPES = (EXACT, NEAR, SEMANTIC)
 COLORS = {EXACT: "#dc2626", NEAR: "#f97316", SEMANTIC: "#eab308", NONE: "#9ca3af"}
 HIGHLIGHT_BG = {EXACT: "#fecaca", NEAR: "#fed7aa", SEMANTIC: "#fef08a"}
 
+DISPLAY_TYPE = {
+    EXACT: "Exact copy",
+    NEAR: "Near copy",
+    SEMANTIC: "Similar meaning",
+    TOPICAL: "Topical similarity",
+    NONE: "Original"
+}
+
 CONTEXT_MIN_SIM = 0.60
 DISTINCTIVE_DF = 0.10
 LEXICAL_MIN_SHARED = 2
@@ -508,12 +516,76 @@ def scan_against_reference_corpus(model, text: str, document_name: str = "Upload
     if progress:
         progress(0.95, "Finalizing sentence matches...")
     finalize_semantic_matches(all_matches)
-    counted_per_source = Counter(m["url"] for m in all_matches if m["type"] in COUNTED_TYPES)
+
+    # Calculate per-source statistics
     for s in sources:
-        s["matches"] = counted_per_source[s["url"]]
+        s_matches = [m for m in all_matches if (m.get("url") == s.get("url") or (s.get("title") and m.get("title") == s.get("title"))) and m["type"] in COUNTED_TYPES]
+        unique_indices = set(m["index"] for m in s_matches)
+        s["matches"] = len(unique_indices)
+        s["best_match_pct"] = round(float(max((m["score"] for m in s_matches), default=0.0)), 1)
+        s["document_coverage_pct"] = round((len(unique_indices) / max(len(sentences), 1)) * 100, 1)
+        if any(m["type"] == EXACT for m in s_matches):
+            s["highest_match_type"] = "Exact copy"
+        elif any(m["type"] == NEAR for m in s_matches):
+            s["highest_match_type"] = "Near copy"
+        elif any(m["type"] == SEMANTIC for m in s_matches):
+            s["highest_match_type"] = "Similar meaning"
+        else:
+            s["highest_match_type"] = "Original"
+
+    # Rank verified sources with matches: highest match % first, then matched sentences
+    matching_sources = [s for s in sources if s.get("verified") and s.get("matches", 0) > 0]
+    matching_sources.sort(key=lambda s: (-s.get("best_match_pct", 0.0), -s.get("matches", 0), -s.get("document_coverage_pct", 0.0)))
+    for r_idx, s in enumerate(matching_sources):
+        s["rank"] = r_idx + 1
+
+    # Keep all sources in result (matching first, then non-matching)
+    unmatched_sources = [s for s in sources if s not in matching_sources]
+    all_ranked_sources = matching_sources + unmatched_sources
+
+    # Group matches by sentence to select best primary match and annotate 'also_found_on'
+    matches_by_sentence = {}
+    for m in all_matches:
+        if m["type"] in COUNTED_TYPES:
+            matches_by_sentence.setdefault(m["index"], []).append(m)
+
+    primary_matches = []
+    for idx_sent, s_match_list in matches_by_sentence.items():
+        s_match_list.sort(key=lambda m: (-RANK.get(m["type"], 0), -m.get("score", 0.0)))
+        best_m = dict(s_match_list[0])
+        extra = s_match_list[1:]
+        best_m["also_found_on"] = [
+            {
+                "title": em.get("title", ""),
+                "url": em.get("url", ""),
+                "score": round(float(em.get("score", 0.0)), 1),
+                "type": DISPLAY_TYPE.get(em.get("type"), em.get("type"))
+            }
+            for em in extra
+        ]
+        primary_matches.append(best_m)
+
+    primary_matches.sort(key=lambda m: -m.get("score", 0.0))
 
     sentence_rows, stats = summarize_matches(sentences, all_matches)
-    with_matches = len([s for s in sources if s["matches"] > 0])
+    # Ensure each sentence row has also_found_on if applicable
+    for row_idx, row in enumerate(sentence_rows):
+        if row_idx in matches_by_sentence:
+            sorted_m = sorted(matches_by_sentence[row_idx], key=lambda m: (-RANK.get(m["type"], 0), -m.get("score", 0.0)))
+            row["matched"] = sorted_m[0].get("matched", "")
+            row["title"] = sorted_m[0].get("title", "")
+            row["url"] = sorted_m[0].get("url", "")
+            row["also_found_on"] = [
+                {
+                    "title": em.get("title", ""),
+                    "url": em.get("url", ""),
+                    "score": round(float(em.get("score", 0.0)), 1),
+                    "type": DISPLAY_TYPE.get(em.get("type"), em.get("type"))
+                }
+                for em in sorted_m[1:]
+            ]
+
+    with_matches = len(matching_sources)
     stats.update(verified_sources=len(sources), sources_with_matches=with_matches, unverified_sources=0)
 
     status = "matches" if stats["overall_pct"] > 0 else "no_matches"
@@ -533,13 +605,15 @@ def scan_against_reference_corpus(model, text: str, document_name: str = "Upload
 
     return {
         "kind": "web_scan",
+        "scan_mode": "Reference Library",
         "status": status,
         "incomplete_reason": "",
         "document_name": document_name,
         "scanned_at": scanned_at,
         "sentences": sentence_rows,
-        "matches": all_matches,
-        "sources": sources,
+        "matches": primary_matches if primary_matches else all_matches,
+        "all_matches": all_matches,
+        "sources": all_ranked_sources,
         "stats": stats,
         "pipeline": pipeline,
         "warnings": [],
