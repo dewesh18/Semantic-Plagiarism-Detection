@@ -1663,6 +1663,51 @@ def _tab_fix():
             st.markdown(f"- {tip}")
 
 
+def _compare_tab(settings):
+    st.write("Upload two documents to compare them directly. This works offline (after the model has been downloaded once).")
+    col_a, col_b = st.columns(2)
+    file_a = col_a.file_uploader("Document A (checked against B)", type=["pdf", "docx", "txt"], key="cmp_a")
+    file_b = col_b.file_uploader("Document B (reference)", type=["pdf", "docx", "txt"], key="cmp_b")
+    if st.button("Compare documents", type="primary", key="cmp_btn"):
+        if file_a is None or file_b is None:
+            st.error("Please upload both documents.")
+            return
+        try:
+            text_a = extract_text_from_upload(file_a)
+            text_b = extract_text_from_upload(file_b)
+        except Exception as exc:
+            st.error(f"Could not read a file: {exc}")
+            return
+        model = _get_model()
+        if model is None:
+            return
+        try:
+            with st.spinner("Comparing with BERT..."):
+                st.session_state["cmp_result"] = compare_documents(
+                    model, text_a, text_b, file_a.name, file_b.name,
+                    settings.get("semantic_threshold", 0.70), settings.get("near_threshold", 0.90))
+        except Exception as exc:
+            st.error(f"Comparison failed: {exc}")
+    if "cmp_result" in st.session_state:
+        display_comparison(st.session_state["cmp_result"])
+
+
+def _history_tab():
+    rows = get_scan_history()
+    if not rows:
+        st.info("No scans saved yet.")
+        return
+    st.dataframe(rows)
+    options = {f"#{r['Scan ID']} - {r['Document']} - {r['Date/Time']} - {r['Status']}": r["Scan ID"]
+               for r in rows}
+    choice = st.selectbox("Open a previous scan", list(options.keys()), key="hist_select")
+    details = get_scan_details(options[choice])
+    if details:
+        display_results(details, f"hist_{options[choice]}")
+    else:
+        st.warning("Details for this scan are not available.")
+
+
 def _tab_report(settings):
     st.markdown("### 🎓 Course Outcome (CO) Rubric Assessment & Technical Report")
     st.write("Examiner evaluation panel, benchmark metrics, preprocessing inspection, and technical tools.")
