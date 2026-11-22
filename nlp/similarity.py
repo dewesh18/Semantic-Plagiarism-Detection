@@ -484,13 +484,14 @@ def scan_against_reference_corpus(model, text: str, document_name: str = "Upload
             ref_sentences = extract_sentences(content, min_words=MIN_WORDS)
             if not ref_sentences:
                 continue
+            source_url = f"file:///{fpath.replace(os.sep, '/')}"
             matches = match_against_source(model, sentences, user_embeddings, ref_sentences,
-                                           title, f"file:///{fpath.replace(os.sep, '/')}",
+                                           title, source_url,
                                            semantic_threshold, near_threshold)
             counted = [m for m in matches if m["type"] in COUNTED_TYPES]
             sources.append({
                 "title": title.replace("_", " ").replace(".txt", "").title(),
-                "url": fpath,
+                "url": source_url,
                 "verified": True,
                 "downloaded": True,
                 "note": "",

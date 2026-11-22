@@ -123,6 +123,12 @@ class TestUISmoke(unittest.TestCase):
             at.run()
             self.assertEqual(len(at.exception), 0, f"Exception rendering {sample_file}: {[e.value for e in at.exception]}")
 
+            # Verify that Results, Fix, and Project Report rendered their elements
+            all_text = [m.value for m in at.markdown] + [s.value for s in at.success] + [w.value for w in at.warning] + [e.value for e in at.error]
+            self.assertTrue(any("Originality Score" in t for t in all_text), f"Results tab originality missing for {sample_file}")
+            self.assertTrue(any("Project Demonstration Rubric" in t for t in all_text), f"Project Report rubric missing for {sample_file}")
+            self.assertTrue(any("Tone of Your Writing" in t for t in all_text), f"Tone section missing for {sample_file}")
+
 
 if __name__ == "__main__":
     unittest.main()
