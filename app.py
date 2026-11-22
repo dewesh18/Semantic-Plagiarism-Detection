@@ -71,10 +71,15 @@ def get_secret(name):
     """Return (value, source_description) for an API key, or ("", "") if not configured."""
     try:
         typed = st.session_state.get(f"session_key_{name}", "")
+        if not typed:
+            for k, val in st.session_state.items():
+                if k.endswith(f"session_key_{name}") and val and str(val).strip():
+                    typed = str(val).strip()
+                    break
     except Exception:
         typed = ""
-    if typed and typed.strip():
-        return typed.strip(), "entered in the sidebar (this session only)"
+    if typed and str(typed).strip():
+        return str(typed).strip(), "entered in session (this session only)"
     value = os.getenv(name, "").strip()
     if value:
         return value, "environment variable / .env file"
@@ -1109,7 +1114,7 @@ def _legend():
         f'<span style="background:{HIGHLIGHT_BG[NEAR]};color:#111;padding:2px 8px;border-radius:4px">'
         f'Near-exact</span> &nbsp; '
         f'<span style="background:{HIGHLIGHT_BG[SEMANTIC]};color:#111;padding:2px 8px;border-radius:4px">'
-        f'Semantic (similar meaning)</span> &nbsp; Plain text = no significant match',
+        f'Similar meaning</span> &nbsp; Plain text = no match found',
         unsafe_allow_html=True)
 
 
@@ -1296,67 +1301,55 @@ def _provider_status_line(pid):
     return f"\u274c **{spec['label']}** - `{spec['env']}` not set"
 
 
-def _search_diagnostics(provider_choice):
-    """Sidebar panel: provider status, key status, and an independent connection + search test."""
-    with st.sidebar.expander("Search diagnostics"):
-        info = resolve_provider(provider_choice)
-        st.markdown(f"**Active provider:** {info['label']}")
-        if info["configured"]:
-            st.success("Provider is configured" + (f" - key from {info['source']}" if info["source"] else ""))
+def _search_diagnostics(provider_choice, key_prefix="diag"):
+    """Provider status, key status, and an independent connection + search test."""
+    info = resolve_provider(provider_choice)
+    st.markdown(f"**Active provider:** {info['label']}")
+    if info["configured"]:
+        st.success("Provider is configured" + (f" - key from {info['source']}" if info["source"] else ""))
+    else:
+        st.error(info["problem"])
+    st.markdown(_provider_status_line("brave"))
+    st.markdown(_provider_status_line("tavily"))
+    st.text_input("Brave API key (this session only)", type="password", key=f"{key_prefix}_session_key_BRAVE_API_KEY")
+    st.text_input("Tavily API key (this session only)", type="password", key=f"{key_prefix}_session_key_TAVILY_API_KEY")
+    st.caption("Keys typed here are kept in memory for this session only and are never saved. "
+               "For permanent setup use BRAVE_API_KEY / TAVILY_API_KEY in a .env file.")
+    query = st.text_input("Test query", value='"Federated Learning is a distributed learning '
+                                              'paradigm with two key challenges"', key=f"{key_prefix}_query")
+    if st.button("Test provider connection and search", key=f"{key_prefix}_btn"):
+        with st.spinner("Contacting the search provider..."):
+            test = test_search_provider(provider_choice, query)
+        if not test["configured"]:
+            st.error("Not configured: " + (test["errors"][0] if test["errors"] else ""))
+        elif test["connected"]:
+            st.success(f"Connection OK ({test['seconds']} s)")
+            st.write(f"Results retrieved: **{test['result_count']}**")
+            for r in test["results"]:
+                st.markdown(f"- [{r['title'] or r['url']}]({r['url']})")
+            if test["result_count"] == 0:
+                st.warning("The provider answered but returned zero results for this query.")
         else:
-            st.error(info["problem"])
-        st.markdown(_provider_status_line("brave"))
-        st.markdown(_provider_status_line("tavily"))
-        st.text_input("Brave API key (this session only)", type="password", key="session_key_BRAVE_API_KEY")
-        st.text_input("Tavily API key (this session only)", type="password", key="session_key_TAVILY_API_KEY")
-        st.caption("Keys typed here are kept in memory for this session only and are never saved. "
-                   "For permanent setup use BRAVE_API_KEY / TAVILY_API_KEY in a .env file.")
-        query = st.text_input("Test query", value='"Federated Learning is a distributed learning '
-                                                  'paradigm with two key challenges"', key="diag_query")
-        if st.button("Test provider connection and search", key="diag_btn"):
-            with st.spinner("Contacting the search provider..."):
-                test = test_search_provider(provider_choice, query)
-            if not test["configured"]:
-                st.error("Not configured: " + (test["errors"][0] if test["errors"] else ""))
-            elif test["connected"]:
-                st.success(f"Connection OK ({test['seconds']} s)")
-                st.write(f"Results retrieved: **{test['result_count']}**")
-                for r in test["results"]:
-                    st.markdown(f"- [{r['title'] or r['url']}]({r['url']})")
-                if test["result_count"] == 0:
-                    st.warning("The provider answered but returned zero results for this query.")
-            else:
-                st.error("Provider connection or search FAILED")
-            for message in test["errors"] if test["configured"] else []:
-                st.caption(message)
+            st.error("Provider connection or search FAILED")
+        for message in test["errors"] if test["configured"] else []:
+            st.caption(message)
 
 
-def _sidebar_settings():
-    st.sidebar.markdown("### PlagiarismAI")
-    st.sidebar.caption("Semantic originality detection & academic assistant")
+def _render_sidebar():
+    st.sidebar.markdown("### 🔍 PlagiarismAI")
+    st.sidebar.caption("An originality checker and writing assistant for essays and academic work.")
 
-    with st.sidebar.expander("⚙️ Advanced Settings (Optional)", expanded=False):
-        labels = {"auto": "Auto (first configured: Brave, then Tavily)", "brave": "Brave Search API",
-                  "tavily": "Tavily Search API", "ddgs": "DuckDuckGo via ddgs (unofficial)"}
-        provider = st.selectbox("Search provider", PROVIDER_CHOICES, format_func=labels.get,
-                                key="provider_choice")
-        status = resolve_provider(provider)
-        if status["configured"]:
-            st.caption(f"\u2705 Using {status['label']}")
-        else:
-            st.caption("ℹ️ Search provider not configured (offline mode used).")
-        semantic_pct = st.slider("Semantic similarity threshold (%)", 50, 95, 70)
-        near_pct = st.slider("Near-exact threshold (%)", 80, 99, 90)
-        max_queries = st.slider("Search queries", 1, 15, 8)
-        results_per_query = st.slider("Results per query", 1, 10, 5)
-        max_pages = st.slider("Max webpages to download", 1, 30, 12)
-        max_sentences = st.slider("Max sentences scanned", 20, 500, 200)
-        _search_diagnostics(provider)
 
-    # Defaults if expander is not touched
-    provider = st.session_state.get("provider_choice", "auto")
-    return {"provider": provider, "semantic_threshold": 0.70, "near_threshold": 0.90,
-            "max_queries": 8, "results_per_query": 5, "max_pages": 12, "max_sentences": 200}
+def _get_settings():
+    return {
+        "provider": st.session_state.get("adv_provider", "auto"),
+        "semantic_threshold": st.session_state.get("adv_sem_thresh", 70) / 100.0,
+        "near_threshold": st.session_state.get("adv_near_thresh", 90) / 100.0,
+        "max_queries": st.session_state.get("adv_queries", 8),
+        "results_per_query": st.session_state.get("adv_res_per_q", 5),
+        "max_pages": st.session_state.get("adv_max_pages", 12),
+        "max_sentences": st.session_state.get("adv_max_sentences", 200),
+    }
 
 
 def _load_sample_file(filename):
@@ -1370,7 +1363,7 @@ def _load_sample_file(filename):
 
 def _tab_check(settings):
     st.markdown("### Document Originality & Writing Checker")
-    st.write("Upload or paste your text to check originality, writing tone, main themes, and key details.")
+    st.write("Check how original your writing is, in a few seconds.")
 
     # 1-Click Demo Sample Selectors
     st.markdown("**Quick Demo Samples (click to load):**")
@@ -1393,8 +1386,8 @@ def _tab_check(settings):
     col_opt1, col_opt2 = st.columns([2, 1])
     with col_opt1:
         mode_choice = st.radio(
-            "Source comparison mode",
-            ["Verified Reference Library (Fast, Reliable Demo)", "Live Web Search (Requires Internet & API Key)"],
+            "Comparison source",
+            ["Reference Library (Fast, Recommended)", "Live Web Search (Requires API Key)"],
             horizontal=True,
             key="check_mode_choice"
         )
@@ -1606,6 +1599,7 @@ def _tab_results():
 def _tab_fix():
     st.markdown("### Academic Writing Assistant")
     st.write("Select or paste any flagged sentence to receive AI-powered rewriting, citation formatting, and originality advice.")
+    st.caption("Note: AI rewrites are meant as learning aids. Always cite your sources properly.")
 
     # Auto-populate if chosen from Results
     default_passage = st.session_state.get("fix_target_sentence", "")
@@ -1648,7 +1642,7 @@ def _tab_fix():
             st.markdown("#### Your Sentence")
             st.error(f"> \"{passage_input}\"")
             st.markdown("##### Why this looks copied")
-            st.write(fix_res.get("explanation", "Shows significant syntactic and semantic overlap with existing literature."))
+            st.write(fix_res.get("explanation", "This passage shares wording and sentence structure with existing reference documents."))
 
         with col2:
             st.markdown("#### Suggested Academic Rewrite")
@@ -1812,24 +1806,37 @@ def _tab_report(settings):
     st.divider()
 
     # Section: Developer Settings & Search Diagnostics
-    with st.expander("Search Provider Configuration & Diagnostics"):
-        _search_diagnostics(settings.get("provider", "auto"))
+    with st.expander("⚙️ Advanced Pipeline Settings & Search Diagnostics (Examiner / Developer)", expanded=False):
+        st.markdown("##### Pipeline Configuration")
+        labels = {"auto": "Auto (first configured: Brave, then Tavily)", "brave": "Brave Search API",
+                  "tavily": "Tavily Search API", "ddgs": "DuckDuckGo via ddgs (unofficial)"}
+        st.selectbox("Search provider", PROVIDER_CHOICES, format_func=labels.get, key="adv_provider")
+        st.slider("Semantic similarity threshold (%)", 50, 95, 70, key="adv_sem_thresh")
+        st.slider("Near-exact threshold (%)", 80, 99, 90, key="adv_near_thresh")
+        st.slider("Search queries", 1, 15, 8, key="adv_queries")
+        st.slider("Results per query", 1, 10, 5, key="adv_res_per_q")
+        st.slider("Max webpages to download", 1, 30, 12, key="adv_max_pages")
+        st.slider("Max sentences scanned", 20, 500, 200, key="adv_max_sentences")
+
+        st.markdown("##### Search Provider Diagnostics")
+        _search_diagnostics(st.session_state.get("adv_provider", "auto"), key_prefix="rep_diag")
 
 
 def main():
-    st.set_page_config(page_title=f"{APP_NAME} - Semantic Plagiarism Detection",
-                       page_icon="\U0001F50E", layout="wide")
+    st.set_page_config(page_title=f"{APP_NAME} - Document Originality Checker",
+                       page_icon="🔍", layout="wide")
     init_db()
     verify_gemini_model_at_startup()
 
-    st.title("\U0001F50E PlagiarismAI")
-    st.caption("BERT-based semantic plagiarism detection with real web sources")
+    st.title("🔍 PlagiarismAI")
+    st.caption("Check how original your writing is, in a few seconds.")
 
     # Show warning if multilingual model failed and English-only model is active
     if not _MODEL_LOAD_STATUS.get("is_multilingual", True) and _MODEL_LOAD_STATUS.get("warning"):
         st.warning(f"⚠️ **Model Notice:** {_MODEL_LOAD_STATUS['warning']}")
 
-    settings = _sidebar_settings()
+    _render_sidebar()
+    settings = _get_settings()
     tabs = st.tabs(["Check", "Results", "Fix it for me", "Project Report"])
     with tabs[0]:
         _tab_check(settings)

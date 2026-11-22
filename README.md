@@ -3,7 +3,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit App](https://img.shields.io/badge/Streamlit-1.40+-FF4B4B.svg)](https://streamlit.io)
 [![NLP & LLM Powered](https://img.shields.io/badge/NLP-SentenceTransformers%20%7C%20spaCy%20%7C%20Gemini-green.svg)](#course-outcomes-co-rubric-mapping)
-[![Tests Passing](https://img.shields.io/badge/Unit%20Tests-63%20Passed-brightgreen.svg)](#running-unit-tests)
+[![Tests Passing](https://img.shields.io/badge/Unit%20Tests-66%20Passed-brightgreen.svg)](#running-unit-tests)
 
 **PlagiarismAI** is a comprehensive Natural Language Processing (NLP) and Generative AI application designed to detect text reuse, classify writing tone, extract topical themes and named entities, support cross-lingual analysis (English, Hindi, Marathi), and provide interactive AI-assisted rephrasing and citation guidance for academic writing.
 
@@ -63,7 +63,8 @@ PlagiarismAI/
 ├── docs/                       # Technical documentation
 │   └── prompt_design.md        # Prompt engineering architecture & decisions
 │
-└── tests/                      # Automated unit test suite (63 tests)
+└── tests/                      # Automated unit test suite (66 tests)
+    ├── test_ui_smoke.py        # Streamlit AppTest smoke tests across all 4 UI tabs
     ├── test_preprocess.py      # Tests for text cleaning and vectorization
     ├── test_analysis.py        # Tests for sentiment, NER, keywords, citations
     ├── test_topics_multilingual.py # Tests for LDA, language detection, translation
@@ -121,7 +122,7 @@ python run.py
 # 2. Run the evaluation benchmark (recomputes evaluation.json and benchmark figure)
 python run.py --evaluate
 
-# 3. Run the full automated unit test suite (63 tests)
+# 3. Run the full automated unit test suite (66 tests)
 python run.py --test
 ```
 
@@ -135,7 +136,7 @@ python run.py --test
 | **2** | 0:40 - 1:20 | **Tab 2: Results** | Review the **Originality Score (14.3%)** (85.7% similarity) and the 4 plain-language cards: **Copied parts** (6 of 7 sentences flagged), **Tone (Positive, 83% confidence)**, **Themes (Artificial Intelligence & Machine Learning)**, and **Key details (Vaswani et al.)**. | Point out that semantic similarity detects paraphrases without shared exact words. Show how the 4 cards translate complex NLP into actionable insights. | **CO2** & **CO3** |
 | **3** | 1:20 - 1:50 | **Tab 2 ➔ Tab 3** | Under "Copied parts", click **"Fix Passage 1"**, then switch to **Tab 3: Fix it for me** and click **"Fix this passage with AI Writing Coach"**. | Show the side-by-side comparison: flagged sentence vs academic rewrite, the plain explanation of why it was flagged, the ready-to-use APA citation, and the 3 tips. | **CO4** |
 | **4** | 1:50 - 2:30 | **Tab 1 ➔ Tab 2** | Return to Tab 1, click **"🌐 Hindi Document"**, and click **"Check my document"**. | Demonstrate multilingual NLP: automatic Devanagari detection (Hindi, 99%), translation to English (Google Cloud or fallback translator), and cross-lingual semantic matching (70.4% topical overlap, 100% originality). | **CO3** |
-| **5** | 2:30 - 3:00 | **Tab 4: Project Report** | Switch to **Tab 4: Project Report**. Show the **"How we read your text"** before/after preview, the **Evaluation Benchmark Table**, the **Benchmark Chart**, and download the official **PDF report**. | Highlight honest scientific methodology: 63 unit tests passing, evaluation across 31 text pairs, 20 sentiment sentences, and 10 cross-lingual pairs (with threshold disclosure note). | **All (CO1-CO4)** |
+| **5** | 2:30 - 3:00 | **Tab 4: Project Report** | Switch to **Tab 4: Project Report**. Show the **"How we read your text"** before/after preview, the **Evaluation Benchmark Table**, the **Benchmark Chart**, and download the official **PDF report**. | Highlight honest scientific methodology: 66 unit tests passing, evaluation across 31 text pairs, 20 sentiment sentences, and 10 cross-lingual pairs (with threshold disclosure note). | **All (CO1-CO4)** |
 
 ---
 
