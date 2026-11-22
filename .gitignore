@@ -1,8 +1,12 @@
 .env
 .env.*
 !.env.example
+.streamlit/secrets.toml
+!.streamlit/secrets.toml.example
 .backup_preupgrade/
 .venv/
+venv/
+venv*/
 __pycache__/
 .pytest_cache/
 *.py[cod]

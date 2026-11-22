@@ -17,7 +17,24 @@ from typing import Any, Dict, Optional
 
 from llm.prompts import SYSTEM_ROLE_INSTRUCTION, build_fix_prompt
 
-DEFAULT_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+
+def get_env_or_secret(name: str, default: str = "") -> str:
+    """Return environment variable or Streamlit secret without requiring .env."""
+    val = os.getenv(name, "").strip()
+    if val:
+        return val
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and name in st.secrets:
+            s_val = str(st.secrets[name]).strip()
+            if s_val:
+                return s_val
+    except Exception:
+        pass
+    return default
+
+
+DEFAULT_MODEL_NAME = get_env_or_secret("GEMINI_MODEL", "gemini-3.5-flash")
 
 # In-memory session cache for instant repeat clicks
 _FIX_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -29,8 +46,8 @@ def verify_gemini_model_at_startup() -> Dict[str, Any]:
     if the Google Gen AI SDK and API key are available.
     Prints a clear message if the model name is rejected or missing.
     """
-    active_model = os.getenv("GEMINI_MODEL", DEFAULT_MODEL_NAME).strip()
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    active_model = get_env_or_secret("GEMINI_MODEL", DEFAULT_MODEL_NAME).strip()
+    api_key = get_env_or_secret("GEMINI_API_KEY", "").strip()
 
     status = {
         "model": active_model,
@@ -153,8 +170,8 @@ def fix_passage(
         res["cached"] = True
         return res
 
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    active_model = model_name or os.getenv("GEMINI_MODEL", DEFAULT_MODEL_NAME).strip()
+    api_key = get_env_or_secret("GEMINI_API_KEY", "").strip()
+    active_model = model_name or get_env_or_secret("GEMINI_MODEL", DEFAULT_MODEL_NAME).strip()
 
     if not api_key:
         fallback = _get_fallback_fix(passage, source_title, source_url)

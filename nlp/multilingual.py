@@ -32,8 +32,47 @@ HINDI_DISTINCTIVE_WORDS = {
 }
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def get_env_or_secret(name: str, default: str = "") -> str:
+    """Return environment variable or Streamlit secret without requiring .env."""
+    val = os.getenv(name, "").strip()
+    if val:
+        return val
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and name in st.secrets:
+            s_val = str(st.secrets[name]).strip()
+            if s_val:
+                return s_val
+    except Exception:
+        pass
+    return default
+
+
+def get_writable_cache_path() -> str:
+    """Return a writable path for the translation cache, falling back to tempdir if needed."""
+    custom = os.getenv("TRANSLATION_CACHE_PATH", "").strip()
+    if custom:
+        return custom
+    candidate = os.path.join(ROOT_DIR, "reports", "translation_cache.json")
+    try:
+        os.makedirs(os.path.dirname(candidate), exist_ok=True)
+        test_file = os.path.join(os.path.dirname(candidate), ".write_test")
+        with open(test_file, "a") as f:
+            pass
+        os.remove(test_file)
+        return candidate
+    except OSError:
+        pass
+    import tempfile
+    temp_dir = os.path.join(tempfile.gettempdir(), "plagiarism_ai")
+    os.makedirs(temp_dir, exist_ok=True)
+    return os.path.join(temp_dir, "translation_cache.json")
+
+
 DB_PATH = os.path.join(ROOT_DIR, "plagiarism_history.db")
-TRANSLATION_CACHE_FILE = os.path.join(ROOT_DIR, "reports", "translation_cache.json")
+TRANSLATION_CACHE_FILE = get_writable_cache_path()
 
 
 # -----------------------------------------------------------------------------
@@ -157,7 +196,7 @@ def _translate_gemini(text: str, source_lang: str, api_key: str, model_name: Opt
     try:
         from google import genai
         from google.genai import types
-        model = model_name or os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        model = model_name or get_env_or_secret("GEMINI_MODEL", "gemini-3.5-flash")
         client = genai.Client(api_key=api_key)
         lang_str = "Hindi" if source_lang == "hi" else ("Marathi" if source_lang == "mr" else source_lang)
         prompt = (
@@ -214,8 +253,8 @@ def translate_text(text: str, source_lang_code: str = "auto", use_cache: bool = 
     translated_chunks = []
     provider_used = "fallback translator"
 
-    google_api_key = os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip()
-    gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    google_api_key = get_env_or_secret("GOOGLE_TRANSLATE_API_KEY", "").strip()
+    gemini_api_key = get_env_or_secret("GEMINI_API_KEY", "").strip()
 
     for chunk in chunks:
         chunk_translated = None

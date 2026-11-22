@@ -85,12 +85,54 @@ def get_secret(name):
     if value:
         return value, "environment variable / .env file"
     try:
-        value = str(st.secrets[name]).strip()
-        if value:
-            return value, "Streamlit secrets"
+        if hasattr(st, "secrets") and name in st.secrets:
+            value = str(st.secrets[name]).strip()
+            if value:
+                return value, "Streamlit secrets"
     except Exception:
         pass
     return "", ""
+
+
+def get_env_or_secret(name, default=""):
+    """Return secret value from session, environment, or st.secrets."""
+    val, _ = get_secret(name)
+    return val if val else default
+
+
+def is_low_memory_mode():
+    val = get_env_or_secret("LOW_MEMORY_MODE", "true").lower()
+    return val in ("true", "1", "yes")
+
+
+def get_process_memory_mb() -> float:
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        return process.memory_info().rss / (1024 * 1024)
+    except Exception:
+        return 0.0
+
+
+def get_writable_db_path():
+    """Return (db_path, is_ephemeral). Tries project root first, falls back to tempdir."""
+    custom = os.getenv("PLAGIARISM_DB_PATH", "").strip()
+    if custom:
+        return custom, False
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    candidate = os.path.join(root_dir, "plagiarism_history.db")
+    try:
+        test_file = os.path.join(root_dir, ".write_test")
+        with open(test_file, "a") as f:
+            pass
+        os.remove(test_file)
+        return candidate, False
+    except OSError:
+        pass
+    import tempfile
+    temp_dir = os.path.join(tempfile.gettempdir(), "plagiarism_ai")
+    os.makedirs(temp_dir, exist_ok=True)
+    return os.path.join(temp_dir, "plagiarism_history.db"), True
 
 
 # --------------------------------------------------------------------------
@@ -98,7 +140,7 @@ def get_secret(name):
 # --------------------------------------------------------------------------
 APP_NAME = "PlagiarismAI"
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plagiarism_history.db")
+DB_PATH, IS_EPHEMERAL_DB = get_writable_db_path()
 
 from nlp.extract import (
     extract_text_from_pdf,
@@ -218,10 +260,31 @@ _MODEL_LOAD_STATUS = {
 
 @st.cache_resource(show_spinner=False)
 def load_bert_model():
-    """Load Sentence-BERT once per server process with multilingual priority."""
+    """Load Sentence-BERT lazily once per server process."""
     from sentence_transformers import SentenceTransformer
 
-    # 1. Try multilingual model
+    custom_model = get_env_or_secret("EMBEDDING_MODEL", "").strip()
+    if custom_model:
+        model = SentenceTransformer(custom_model)
+        _MODEL_LOAD_STATUS["name"] = custom_model
+        _MODEL_LOAD_STATUS["is_multilingual"] = "multilingual" in custom_model.lower()
+        _MODEL_LOAD_STATUS["warning"] = ""
+        print(f"[*] PlagiarismAI: Loaded Custom Embedding Model: {custom_model}")
+        return model
+
+    if is_low_memory_mode():
+        # Low-memory mode: all-MiniLM-L6-v2 (~578 MB RAM, fits comfortably in 1GB free tier)
+        try:
+            model = SentenceTransformer(FALLBACK_MODEL_NAME, local_files_only=True)
+        except Exception:
+            model = SentenceTransformer(FALLBACK_MODEL_NAME)
+        _MODEL_LOAD_STATUS["name"] = FALLBACK_MODEL_NAME
+        _MODEL_LOAD_STATUS["is_multilingual"] = False
+        _MODEL_LOAD_STATUS["warning"] = ""
+        print(f"[*] PlagiarismAI (Low-Memory Mode): Loaded {FALLBACK_MODEL_NAME}")
+        return model
+
+    # If low-memory mode is explicitly disabled, try multilingual model
     try:
         model = SentenceTransformer(MULTILINGUAL_MODEL_NAME, local_files_only=True)
         _MODEL_LOAD_STATUS["name"] = MULTILINGUAL_MODEL_NAME
@@ -232,7 +295,6 @@ def load_bert_model():
     except Exception as exc_multi:
         print(f"[!] Warning: Multilingual model failed to load ({exc_multi}). Attempting fallback to English-only model.")
 
-    # 2. Try English-only model fallback
     try:
         model = SentenceTransformer(FALLBACK_MODEL_NAME, local_files_only=True)
     except Exception:
@@ -1714,7 +1776,21 @@ def _tab_check(settings):
         else:
             st.caption("ℹ️ **Web search is not set up** (no search API key in .env) — using your reference library.")
 
+    max_checks = 10
+    try:
+        max_checks = int(get_env_or_secret("MAX_CHECKS_PER_SESSION", "10"))
+    except ValueError:
+        max_checks = 10
+
+    checks_used = st.session_state.get("checks_performed", 0)
+    if max_checks > 0:
+        st.caption(f"🛡️ Session checks: **{checks_used}/{max_checks}** used.")
+
     if st.button("Check my document", type="primary", key="main_check_btn", use_container_width=True):
+        if max_checks > 0 and checks_used >= max_checks:
+            st.error(f"🛑 You have reached the maximum allowed checks for this session ({max_checks}/{max_checks}). To prevent search quota exhaustion, please refresh or contact the administrator.")
+            return
+
         try:
             if upload is not None:
                 text = extract_text_from_upload(upload)
@@ -1783,6 +1859,7 @@ def _tab_check(settings):
 
             bar.progress(0.98, text="Finalizing report...")
             scan_res["scan_id"] = save_scan_history(scan_res)
+            st.session_state["checks_performed"] = checks_used + 1
 
             st.session_state["scan_result"] = scan_res
             st.session_state["prep_result"] = prep_res
@@ -1795,7 +1872,10 @@ def _tab_check(settings):
                 "language": lang_res,
                 "translation": trans_info,
             }
+            mem_mb = get_process_memory_mb()
             st.success("✅ Analysis complete! Open the **Results** tab to see your originality score and findings, or **Fix it for me** to rewrite flagged parts.")
+            if mem_mb > 0:
+                st.caption(f"💾 **Memory Footprint:** ~{mem_mb:.1f} MB RSS (low-memory mode: {'ON' if is_low_memory_mode() else 'OFF'})")
         except Exception as exc:
             st.error(f"Analysis failed: {exc}")
         finally:
@@ -1806,6 +1886,10 @@ def _tab_results():
     if "scan_result" not in st.session_state:
         st.info("No document checked yet. Please go to the **Check** tab to upload or paste a document.")
         return
+
+    mem_mb = get_process_memory_mb()
+    if mem_mb > 0:
+        st.caption(f"💾 Server memory: ~{mem_mb:.1f} MB RSS (low-memory mode: {'ON' if is_low_memory_mode() else 'OFF'})")
 
     result = _normalize_result(st.session_state["scan_result"])
     stats = as_dict(result.get("stats"))
@@ -2320,6 +2404,8 @@ def _compare_tab(settings):
 
 
 def _history_tab():
+    if IS_EPHEMERAL_DB:
+        st.info(f"ℹ️ **Ephemeral Storage Notice:** Scan history is saved in temporary cloud container storage (`{os.path.dirname(DB_PATH)}`) and may reset if the server restarts. Set `PLAGIARISM_DB_PATH` to persist history across restarts.")
     rows = get_scan_history()
     if not rows:
         st.info("No scans saved yet.")
@@ -2664,6 +2750,21 @@ def main():
                        page_icon="🔍", layout="wide")
     init_db()
     verify_gemini_model_at_startup()
+
+    app_pwd = get_env_or_secret("APP_PASSWORD", "")
+    if app_pwd:
+        if not st.session_state.get("authenticated", False):
+            st.title("🔍 PlagiarismAI")
+            st.markdown("### 🔒 Authentication Required")
+            st.info("This PlagiarismAI deployment is password-protected. Please enter the access password to continue.")
+            entered = st.text_input("Enter Access Password", type="password", key="app_pwd_input")
+            if st.button("Unlock Application", type="primary", key="app_unlock_btn"):
+                if entered == app_pwd:
+                    st.session_state["authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect password. Please try again.")
+            return
 
     st.title("🔍 PlagiarismAI")
     st.caption("Check how original your writing is, in a few seconds.")

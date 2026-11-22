@@ -38,6 +38,53 @@ STOPWORDS = set(DEFAULT_STOPWORDS) | {
 }
 
 
+_NLTK_CHECKED = False
+_LEMMATIZER = None
+
+
+def ensure_nltk_data():
+    """
+    Ensures required NLTK datasets (wordnet, omw-1.4) are downloaded.
+    Fails gracefully with fallback if network is unavailable or offline.
+    """
+    global _NLTK_CHECKED
+    if _NLTK_CHECKED:
+        return
+    _NLTK_CHECKED = True
+    try:
+        import nltk
+        for resource in ["wordnet", "omw-1.4"]:
+            try:
+                nltk.data.find(f"corpora/{resource}")
+            except (LookupError, Exception):
+                try:
+                    nltk.download(resource, quiet=True)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def get_lemmatizer():
+    """
+    Returns cached WordNetLemmatizer if available, or None.
+    """
+    global _LEMMATIZER
+    if _LEMMATIZER is False:
+        return None
+    if _LEMMATIZER is None:
+        ensure_nltk_data()
+        try:
+            from nltk.stem import WordNetLemmatizer
+            lem = WordNetLemmatizer()
+            lem.lemmatize("testing")
+            _LEMMATIZER = lem
+        except Exception:
+            _LEMMATIZER = False
+            return None
+    return _LEMMATIZER
+
+
 def clean_text(text: str, remove_stopwords: bool = True, lemmatize: bool = True) -> str:
     """
     Cleans unstructured text by:
@@ -75,13 +122,7 @@ def clean_text(text: str, remove_stopwords: bool = True, lemmatize: bool = True)
     tokens = text.split()
     cleaned_tokens = []
 
-    # Lemmatizer fallback strategy
-    lemmatizer = None
-    try:
-        from nltk.stem import WordNetLemmatizer
-        lemmatizer = WordNetLemmatizer()
-    except Exception:
-        lemmatizer = None
+    lemmatizer = get_lemmatizer()
 
     for tok in tokens:
         tok = tok.strip("-_")

@@ -8,6 +8,7 @@ Provides:
 """
 
 import math
+import os
 import re
 from collections import Counter
 from typing import Any, Dict, List
@@ -84,20 +85,19 @@ def analyze_sentiment(text: str) -> Dict[str, Any]:
             vader_analyzer = None
 
     def get_scores(segment: str) -> Dict[str, Any]:
-        if vader_analyzer:
+        is_devanagari = any("\u0900" <= c <= "\u097f" for c in segment)
+        if not is_devanagari and vader_analyzer:
             try:
                 s = vader_analyzer.polarity_scores(segment)
                 comp = s.get("compound", 0.0)
                 if comp >= 0.05:
                     label = "Positive"
                     conf = round(min(0.98, 0.60 + comp * 0.38), 2)
+                    return {"label": label, "confidence": conf, "score": round(comp, 2)}
                 elif comp <= -0.05:
                     label = "Negative"
                     conf = round(min(0.98, 0.60 + abs(comp) * 0.38), 2)
-                else:
-                    label = "Neutral"
-                    conf = round(1.0 - abs(comp), 2)
-                return {"label": label, "confidence": conf, "score": round(comp, 2)}
+                    return {"label": label, "confidence": conf, "score": round(comp, 2)}
             except Exception:
                 pass
         res = _analyze_sentiment_lexicon(segment)
@@ -149,8 +149,14 @@ def get_spacy_nlp():
 
 
 def is_spacy_available() -> bool:
-    """Checks whether spaCy and en_core_web_sm are loaded and functional."""
-    return get_spacy_nlp() is not None
+    """Checks whether spaCy and en_core_web_sm are available without eagerly loading weights."""
+    if _SPACY_NLP is not None and _SPACY_NLP is not False:
+        return True
+    try:
+        import importlib.util
+        return importlib.util.find_spec("en_core_web_sm") is not None
+    except Exception:
+        return False
 
 
 def extract_named_entities(text: str) -> Dict[str, List[str]]:
@@ -217,20 +223,22 @@ def extract_named_entities(text: str) -> Dict[str, List[str]]:
 # -----------------------------------------------------------------------------
 def extract_keywords(text: str, top_n: int = 8) -> List[str]:
     """
-    Extracts key phrases using KeyBERT (if available) or TF-IDF / Frequency heuristic.
+    Extracts key phrases using TF-IDF / frequency distinctiveness.
+    KeyBERT is skipped by default to minimize memory overhead for cloud tiers.
     """
     if not text:
         return []
 
-    try:
-        from keybert import KeyBERT
-        kw_model = KeyBERT()
-        keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words="english", top_n=top_n)
-        return [kw[0] for kw in keywords]
-    except Exception:
-        pass
+    if os.getenv("USE_KEYBERT", "false").lower() in ("true", "1", "yes"):
+        try:
+            from keybert import KeyBERT
+            kw_model = KeyBERT()
+            keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words="english", top_n=top_n)
+            return [kw[0] for kw in keywords]
+        except Exception:
+            pass
 
-    # Frequency + Distinctiveness fallback
+    # Frequency + Distinctiveness heuristic (0 MB extra RAM)
     words = [w.lower().strip(".,;:!?\"'()[]{}") for w in text.split()]
     from nlp.preprocess import STOPWORDS
     content_words = [w for w in words if len(w) >= 4 and w not in STOPWORDS and not w.isdigit()]
