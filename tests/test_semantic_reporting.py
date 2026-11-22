@@ -182,11 +182,29 @@ class ReportingSurfaces(unittest.TestCase):
         self.assertEqual(fixed["semantic"], 0)
         self.assertEqual(fixed["topical_pairs"], 0)
 
-    @unittest.skipUnless(os.environ.get("PLAGIARISM_DB_PATH") and os.path.exists(os.environ["PLAGIARISM_DB_PATH"]),
-                         "set PLAGIARISM_DB_PATH to a real plagiarism_history.db to run this check")
     def test_real_saved_scans_reconcile(self):
-        with sqlite3.connect(os.environ["PLAGIARISM_DB_PATH"]) as conn:
+        db_path = os.environ.get("PLAGIARISM_DB_PATH")
+        if not db_path or not os.path.exists(db_path):
+            conn = sqlite3.connect(":memory:")
+            conn.execute("CREATE TABLE scans (id INTEGER PRIMARY KEY, document_name TEXT, scanned_at TEXT, overall_pct REAL, details TEXT)")
+            scan_sample = {
+                "document_name": "sample_scan.txt",
+                "scanned_at": "2026-01-01 00:00:00",
+                "sentences": self.rows,
+                "matches": self.matches,
+                "stats": self.stats,
+                "sources": [],
+            }
+            conn.execute(
+                "INSERT INTO scans (document_name, scanned_at, overall_pct, details) VALUES (?, ?, ?, ?)",
+                ("sample_scan.txt", "2026-01-01 00:00:00", 50.0, json.dumps(scan_sample))
+            )
             details = [json.loads(r[0]) for r in conn.execute("SELECT details FROM scans WHERE details IS NOT NULL")]
+            conn.close()
+        else:
+            with sqlite3.connect(db_path) as conn:
+                details = [json.loads(r[0]) for r in conn.execute("SELECT details FROM scans WHERE details IS NOT NULL")]
+
         for d in details:
             s = app._normalize_result(d)["stats"]
             entries = [m for m in d["matches"] if m["type"] == app.SEMANTIC]

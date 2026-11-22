@@ -159,6 +159,7 @@ from nlp.analysis import (
     extract_named_entities,
     extract_keywords,
     extract_citations,
+    is_spacy_available,
 )
 from nlp.topics import extract_document_topics
 from nlp.multilingual import detect_language_smart, translate_text_smart
@@ -2590,6 +2591,11 @@ def _tab_report(settings):
                 ]
                 st.dataframe(ie_rows, use_container_width=True)
 
+                if is_spacy_available():
+                    st.success("✅ **Named Entity Recognition:** spaCy model (`en_core_web_sm`) is loaded and active.")
+                else:
+                    st.warning("⚠️ **Named Entity Recognition Notice:** spaCy model (`en_core_web_sm`) is missing; regex fallback is active. Install with: `python -m spacy download en_core_web_sm`.")
+
             if eval_data.get("limitations"):
                 with st.expander("ℹ️ Benchmark Methodology & Provider Notes", expanded=False):
                     for lim in eval_data["limitations"]:
@@ -2665,6 +2671,9 @@ def main():
     # Show warning if multilingual model failed and English-only model is active
     if not _MODEL_LOAD_STATUS.get("is_multilingual", True) and _MODEL_LOAD_STATUS.get("warning"):
         st.warning(f"⚠️ **Model Notice:** {_MODEL_LOAD_STATUS['warning']}")
+
+    if not is_spacy_available():
+        st.warning("⚠️ **spaCy Model Notice:** `en_core_web_sm` is not loaded. Named Entity Recognition is using the regex fallback. To enable spaCy NER, run: `python -m spacy download en_core_web_sm`.")
 
     _render_sidebar()
     settings = _get_settings()

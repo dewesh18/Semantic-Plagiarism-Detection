@@ -504,11 +504,11 @@ def run_full_evaluation():
             "monolingual_embedding_threshold": 0.65,
             "crosslingual_embedding_threshold": 0.60,
             "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
-            "note": "Thresholds are determined by standard information retrieval heuristics (Jaccard > 0.25 token overlap; TF-IDF cosine > 0.35 vector similarity; embedding cosine > 0.65 for near/semantic paraphrase; cross-lingual cosine > 0.60 for multilingual semantic alignment). Note: small evaluation set is used as demonstration benchmark; thresholds were chosen by inspection on a small dataset; results are optimistic. On independent held-out corpora, embedding accuracy is typically 88%-92% (e.g. 90.3% at threshold 0.70)."
+            "note": "Thresholds are determined by standard information retrieval heuristics (Jaccard > 0.25 token overlap; TF-IDF cosine > 0.35 vector similarity; embedding cosine > 0.65 for near/semantic paraphrase; cross-lingual cosine > 0.60 for multilingual semantic alignment). Note: small evaluation set is used as demonstration benchmark; thresholds were chosen by inspection on a small dataset; results are optimistic."
         },
         "limitations": [
             "Dataset sizes (31 text pairs, 20 sentiment sentences, 10 cross-lingual pairs, 22 extraction sentences) are concise to enable rapid interactive testing and grading.",
-            "Similarity threshold 0.65 yields 100% (F1 1.000) on this 31-pair benchmark because the cutoff was inspected on this sample. Broader datasets exhibit natural variance (88-92% accuracy).",
+            "Similarity threshold 0.65 yields 100.0% (F1 1.000) on this 31-pair benchmark because the cutoff was inspected on this sample. Earlier evaluation at threshold 0.70 measured 90.3% accuracy (F1 0.909).",
             "LDA topic model is trained on a focused academic reference corpus; for broad domain coverage, a larger multi-gigabyte corpus or fine-tuned BERTopic would yield more granular topics.",
             "Google Cloud Translation API requires an active GOOGLE_TRANSLATE_API_KEY. When running offline or without credentials, the system safely falls back to Gemini AI Translation (if configured) or the fallback translator.",
             f"Google Cloud Translation API key status during this run: {'Configured' if google_api_key_set else 'Not configured (fallback translator / Gemini used)'}."

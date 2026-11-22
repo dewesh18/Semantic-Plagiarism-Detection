@@ -128,6 +128,31 @@ def analyze_sentiment(text: str) -> Dict[str, Any]:
 # -----------------------------------------------------------------------------
 # 2. Information Extraction: Named Entities
 # -----------------------------------------------------------------------------
+_SPACY_NLP = None
+
+
+def get_spacy_nlp():
+    """
+    Returns cached spaCy en_core_web_sm model, or None if unavailable.
+    """
+    global _SPACY_NLP
+    if _SPACY_NLP is False:
+        return None
+    if _SPACY_NLP is None:
+        try:
+            import spacy
+            _SPACY_NLP = spacy.load("en_core_web_sm")
+        except Exception:
+            _SPACY_NLP = False
+            return None
+    return _SPACY_NLP
+
+
+def is_spacy_available() -> bool:
+    """Checks whether spaCy and en_core_web_sm are loaded and functional."""
+    return get_spacy_nlp() is not None
+
+
 def extract_named_entities(text: str) -> Dict[str, List[str]]:
     """
     Extracts named entities (people, organizations, places, dates) using spaCy.
@@ -143,26 +168,25 @@ def extract_named_entities(text: str) -> Dict[str, List[str]]:
         return results
 
     # Attempt spaCy
-    try:
-        import spacy
-        nlp = spacy.load("en_core_web_sm")
-        doc = nlp(text[:20000])  # limit length for fast analysis
-        for ent in doc.ents:
-            val = ent.text.strip()
-            if len(val) < 2:
-                continue
-            if ent.label_ == "PERSON" and val not in results["people"]:
-                results["people"].append(val)
-            elif ent.label_ in ("ORG", "COMPANY") and val not in results["organizations"]:
-                results["organizations"].append(val)
-            elif ent.label_ in ("GPE", "LOC", "FAC") and val not in results["places"]:
-                results["places"].append(val)
-            elif ent.label_ in ("DATE", "TIME") and val not in results["dates"]:
-                results["dates"].append(val)
-        return {k: v[:15] for k, v in results.items()}
-    except Exception:
-        # Graceful fallback: regex-based entity heuristic
-        pass
+    nlp = get_spacy_nlp()
+    if nlp is not None:
+        try:
+            doc = nlp(text[:20000])  # limit length for fast analysis
+            for ent in doc.ents:
+                val = ent.text.strip()
+                if len(val) < 2:
+                    continue
+                if ent.label_ == "PERSON" and val not in results["people"]:
+                    results["people"].append(val)
+                elif ent.label_ in ("ORG", "COMPANY") and val not in results["organizations"]:
+                    results["organizations"].append(val)
+                elif ent.label_ in ("GPE", "LOC", "FAC") and val not in results["places"]:
+                    results["places"].append(val)
+                elif ent.label_ in ("DATE", "TIME") and val not in results["dates"]:
+                    results["dates"].append(val)
+            return {k: v[:15] for k, v in results.items()}
+        except Exception:
+            pass
 
     # Dates
     dates = re.findall(

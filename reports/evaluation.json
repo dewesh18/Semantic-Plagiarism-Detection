@@ -14,11 +14,11 @@
     "monolingual_embedding_threshold": 0.65,
     "crosslingual_embedding_threshold": 0.6,
     "threshold_description": "chosen by inspection on a small dataset; results are optimistic",
-    "note": "Thresholds are determined by standard information retrieval heuristics (Jaccard > 0.25 token overlap; TF-IDF cosine > 0.35 vector similarity; embedding cosine > 0.65 for near/semantic paraphrase; cross-lingual cosine > 0.60 for multilingual semantic alignment). Note: small evaluation set is used as demonstration benchmark; thresholds were chosen by inspection on a small dataset; results are optimistic. On independent held-out corpora, embedding accuracy is typically 88%-92% (e.g. 90.3% at threshold 0.70)."
+    "note": "Thresholds are determined by standard information retrieval heuristics (Jaccard > 0.25 token overlap; TF-IDF cosine > 0.35 vector similarity; embedding cosine > 0.65 for near/semantic paraphrase; cross-lingual cosine > 0.60 for multilingual semantic alignment). Note: small evaluation set is used as demonstration benchmark; thresholds were chosen by inspection on a small dataset; results are optimistic."
   },
   "limitations": [
     "Dataset sizes (31 text pairs, 20 sentiment sentences, 10 cross-lingual pairs, 22 extraction sentences) are concise to enable rapid interactive testing and grading.",
-    "Similarity threshold 0.65 yields 100% (F1 1.000) on this 31-pair benchmark because the cutoff was inspected on this sample. Broader datasets exhibit natural variance (88-92% accuracy).",
+    "Similarity threshold 0.65 yields 100.0% (F1 1.000) on this 31-pair benchmark because the cutoff was inspected on this sample. Earlier evaluation at threshold 0.70 measured 90.3% accuracy (F1 0.909).",
     "LDA topic model is trained on a focused academic reference corpus; for broad domain coverage, a larger multi-gigabyte corpus or fine-tuned BERTopic would yield more granular topics.",
     "Google Cloud Translation API requires an active GOOGLE_TRANSLATE_API_KEY. When running offline or without credentials, the system safely falls back to Gemini AI Translation (if configured) or the fallback translator.",
     "Google Cloud Translation API key status during this run: Not configured (fallback translator / Gemini used)."
@@ -318,12 +318,12 @@
   "information_extraction_benchmark": {
     "total_samples": 22,
     "named_entities": {
-      "precision": 0.76,
-      "recall": 0.4634,
-      "f1": 0.5758,
-      "tp": 19,
-      "fp": 6,
-      "fn": 22,
+      "precision": 0.6098,
+      "recall": 0.625,
+      "f1": 0.6173,
+      "tp": 25,
+      "fp": 16,
+      "fn": 15,
       "by_category": {
         "people": {
           "tp": 5,
@@ -334,28 +334,28 @@
           "f1": 0.5556
         },
         "organizations": {
-          "tp": 1,
-          "fp": 0,
-          "fn": 9,
-          "precision": 1.0,
-          "recall": 0.1,
-          "f1": 0.1818
+          "tp": 5,
+          "fp": 9,
+          "fn": 5,
+          "precision": 0.3571,
+          "recall": 0.5,
+          "f1": 0.4167
         },
         "places": {
-          "tp": 0,
-          "fp": 0,
-          "fn": 8,
-          "precision": 0.0,
-          "recall": 0.0,
-          "f1": 0.0
+          "tp": 4,
+          "fp": 4,
+          "fn": 4,
+          "precision": 0.5,
+          "recall": 0.5,
+          "f1": 0.5
         },
         "dates": {
-          "tp": 13,
-          "fp": 3,
-          "fn": 0,
-          "precision": 0.8125,
-          "recall": 1.0,
-          "f1": 0.8966
+          "tp": 11,
+          "fp": 0,
+          "fn": 1,
+          "precision": 1.0,
+          "recall": 0.9167,
+          "f1": 0.9565
         }
       }
     },
